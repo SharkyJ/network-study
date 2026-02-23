@@ -1,0 +1,993 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>eTran XDP_GEN — Deep Structural Analysis</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Serif:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0c0e14;
+  --bg2: #12151e;
+  --bg3: #1a1e2e;
+  --accent: #22d3ee;
+  --accent2: #a78bfa;
+  --accent3: #f472b6;
+  --accent4: #34d399;
+  --text: #e2e8f0;
+  --text-dim: #94a3b8;
+  --border: #2a3050;
+  --code-bg: #0f1219;
+  --xdp-color: #22d3ee;
+  --gen-color: #f472b6;
+  --egress-color: #a78bfa;
+  --kernel-color: #34d399;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'IBM Plex Sans', sans-serif;
+  line-height: 1.7;
+  overflow-x: hidden;
+}
+
+.noise {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  pointer-events: none; z-index: 9999; opacity: 0.03;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+header {
+  padding: 60px 40px 40px;
+  max-width: 1300px;
+  margin: 0 auto;
+  border-bottom: 1px solid var(--border);
+}
+
+header .tag {
+  display: inline-block;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: rgba(34,211,238,0.08);
+  padding: 4px 12px;
+  border-radius: 3px;
+  margin-bottom: 16px;
+}
+
+header h1 {
+  font-size: clamp(28px, 4vw, 48px);
+  font-weight: 700;
+  line-height: 1.15;
+  margin-bottom: 12px;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+header .subtitle {
+  font-size: 17px;
+  color: var(--text-dim);
+  max-width: 700px;
+  font-weight: 300;
+}
+
+.container {
+  max-width: 1300px;
+  margin: 0 auto;
+  padding: 40px;
+}
+
+/* Navigation tabs */
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 40px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0;
+  overflow-x: auto;
+}
+
+.tab {
+  padding: 12px 24px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  background: transparent;
+  color: var(--text-dim);
+  border: none;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.tab:hover { color: var(--text); }
+.tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+/* Sections */
+.section { display: none; animation: fadeIn 0.3s ease; }
+.section.active { display: block; }
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+h2 {
+  font-size: 24px;
+  font-weight: 600;
+  margin-bottom: 20px;
+  color: var(--text);
+}
+
+h3 {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 28px 0 12px;
+  color: var(--accent2);
+}
+
+p { margin-bottom: 16px; color: var(--text-dim); font-size: 15px; }
+p strong { color: var(--text); font-weight: 500; }
+
+/* Diagram container */
+.diagram-box {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 32px;
+  margin: 24px 0;
+  overflow-x: auto;
+}
+
+.diagram-box .title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--accent);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin-bottom: 20px;
+}
+
+/* SVG diagrams */
+svg text { font-family: 'JetBrains Mono', monospace; }
+
+/* Code blocks */
+.code-block {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 20px 24px;
+  margin: 16px 0;
+  overflow-x: auto;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  line-height: 1.8;
+  color: #cbd5e1;
+}
+
+.code-block .comment { color: #6b7280; }
+.code-block .keyword { color: var(--accent3); }
+.code-block .type { color: var(--accent); }
+.code-block .func { color: var(--accent4); }
+.code-block .string { color: #fbbf24; }
+.code-block .macro { color: var(--accent2); }
+
+/* Info cards */
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  margin: 24px 0;
+}
+
+.card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 24px;
+  transition: border-color 0.2s;
+}
+
+.card:hover { border-color: var(--accent); }
+
+.card .card-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.card h4 {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.card p { font-size: 13px; margin-bottom: 0; }
+
+.label-xdp { color: var(--xdp-color); }
+.label-gen { color: var(--gen-color); }
+.label-egress { color: var(--egress-color); }
+.label-kernel { color: var(--kernel-color); }
+
+/* Table */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 16px 0;
+  font-size: 14px;
+}
+
+.data-table th {
+  text-align: left;
+  padding: 10px 16px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--accent);
+  border-bottom: 1px solid var(--border);
+  letter-spacing: 0.5px;
+}
+
+.data-table td {
+  padding: 10px 16px;
+  border-bottom: 1px solid rgba(42,48,80,0.5);
+  color: var(--text-dim);
+}
+
+.data-table td code {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  background: var(--bg3);
+  padding: 2px 6px;
+  border-radius: 3px;
+  color: var(--accent4);
+}
+
+/* Flow arrow */
+.flow-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin: 12px 0;
+  padding: 16px;
+  background: var(--bg2);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 6px 6px 0;
+}
+
+.flow-step .step-num {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+  min-width: 28px;
+}
+
+.flow-step .step-text {
+  font-size: 14px;
+  color: var(--text-dim);
+}
+
+.flow-step .step-text code {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--accent4);
+  background: var(--bg3);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+.note-box {
+  background: rgba(244,114,182,0.06);
+  border: 1px solid rgba(244,114,182,0.2);
+  border-radius: 6px;
+  padding: 16px 20px;
+  margin: 20px 0;
+  font-size: 14px;
+  color: var(--text-dim);
+}
+
+.note-box strong { color: var(--accent3); }
+</style>
+</head>
+<body>
+<div class="noise"></div>
+
+<header>
+  <div class="tag">NSDI '25 — eTran Paper Analysis</div>
+  <h1>XDP_GEN Deep Structural Analysis</h1>
+  <p class="subtitle">Reverse-engineered internal architecture of the XDP_GEN eBPF hook from the eTran system, based on paper descriptions and Linux kernel XDP infrastructure.</p>
+</header>
+
+<div class="container">
+  <div class="tabs">
+    <button class="tab active" onclick="showTab('overview')">Overview</button>
+    <button class="tab" onclick="showTab('architecture')">Architecture UML</button>
+    <button class="tab" onclick="showTab('kernel')">Kernel Hook Impl</button>
+    <button class="tab" onclick="showTab('lifecycle')">Execution Lifecycle</button>
+    <button class="tab" onclick="showTab('datastructs')">Data Structures</button>
+    <button class="tab" onclick="showTab('bpfprog')">eBPF Program Side</button>
+  </div>
+
+  <!-- OVERVIEW -->
+  <div class="section active" id="overview">
+    <h2>What is XDP_GEN?</h2>
+    <p><strong>XDP_GEN</strong> is a new eBPF hook introduced by eTran that enables eBPF programs to <strong>generate packets inside the kernel</strong> — specifically ACK and credit packets for transport protocols. Standard XDP only processes ingress packets; XDP_GEN fills the gap for kernel-side packet generation without involving user-space.</p>
+
+    <div class="card-grid">
+      <div class="card">
+        <div class="card-label label-gen">Problem Addressed</div>
+        <h4>Issue ②: No Packet Generation in XDP</h4>
+        <p>Transports need to generate ACK/credit packets to coordinate senders and receivers, but the standard XDP hook has no mechanism for creating new packets inside the kernel.</p>
+      </div>
+      <div class="card">
+        <div class="card-label label-xdp">Placement</div>
+        <h4>Inside <code>xdp_do_flush()</code></h4>
+        <p>XDP_GEN is placed in the <code>xdp_do_flush()</code> (renamed <code>dev_xdp_flush()</code> in the paper) function, called at the end of each NAPI poll cycle.</p>
+      </div>
+      <div class="card">
+        <div class="card-label label-kernel">Context</div>
+        <h4>Same as XDP: <code>struct xdp_md</code></h4>
+        <p>Programs attached to XDP_GEN use the same packet context as standard XDP, enabling reuse of existing eBPF helpers and infrastructure.</p>
+      </div>
+      <div class="card">
+        <div class="card-label label-egress">Return Actions</div>
+        <h4>XDP_TX / XDP_DROP / XDP_ABORTED</h4>
+        <p>XDP_TX transmits the packet. XDP_DROP discards it. XDP_ABORTED terminates the generation loop — no more packets will be produced this cycle.</p>
+      </div>
+    </div>
+
+    <h3>Key Design Decisions (from Paper §3.2.1)</h3>
+    <p>Rather than dynamically allocating packet frames on-demand (which is slow due to kernel memory management), eTran uses <strong>batched pre-allocation</strong> via the <code>page_pool</code> allocator. The XDP_GEN program runs in a finite loop bounded by the NAPI budget. Each iteration may consume one pre-allocated frame to generate a packet.</p>
+
+    <div class="note-box">
+      <strong>Source Code Note:</strong> The eTran-linux kernel repository (github.com/eTran-NSDI25/eTran-linux) contains the actual implementation. However, the code is not well-indexed by search engines. The analysis below is reconstructed from the paper's detailed descriptions (§3.2.1, §4.1, §4.2, §5) cross-referenced with the standard Linux v6.6 XDP/AF_XDP codebase that eTran modifies. Structures marked with ★ are inferred from the paper's descriptions.
+    </div>
+  </div>
+
+  <!-- ARCHITECTURE UML -->
+  <div class="section" id="architecture">
+    <h2>Component Architecture (UML-style)</h2>
+    <p>The following diagram shows XDP_GEN's position within the eTran kernel architecture and its relationships with other components.</p>
+
+    <div class="diagram-box">
+      <div class="title">Component Diagram — XDP_GEN in eTran Kernel</div>
+      <svg viewBox="0 0 960 720" width="100%" style="max-width:960px;">
+        <!-- Background zones -->
+        <rect x="20" y="10" width="920" height="320" rx="8" fill="rgba(34,211,238,0.04)" stroke="var(--border)" stroke-dasharray="6,4"/>
+        <text x="40" y="35" font-size="11" fill="#22d3ee" letter-spacing="1.5">KERNEL SPACE (NAPI CONTEXT)</text>
+
+        <rect x="20" y="350" width="920" height="140" rx="8" fill="rgba(167,139,250,0.04)" stroke="var(--border)" stroke-dasharray="6,4"/>
+        <text x="40" y="375" font-size="11" fill="#a78bfa" letter-spacing="1.5">USER SPACE</text>
+
+        <rect x="20" y="510" width="920" height="190" rx="8" fill="rgba(244,114,182,0.04)" stroke="var(--border)" stroke-dasharray="6,4"/>
+        <text x="40" y="535" font-size="11" fill="#f472b6" letter-spacing="1.5">KERNEL — eBPF INFRASTRUCTURE</text>
+
+        <!-- XDP Hook -->
+        <rect x="60" y="60" width="180" height="80" rx="6" fill="#1a2332" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="150" y="90" font-size="13" fill="#22d3ee" text-anchor="middle" font-weight="600">XDP Hook</text>
+        <text x="150" y="108" font-size="10" fill="#94a3b8" text-anchor="middle">(Ingress Processing)</text>
+        <text x="150" y="124" font-size="9" fill="#64748b" text-anchor="middle">NIC driver RX path</text>
+
+        <!-- XDP_GEN Hook -->
+        <rect x="310" y="60" width="200" height="80" rx="6" fill="#1a2332" stroke="#f472b6" stroke-width="2"/>
+        <text x="410" y="90" font-size="13" fill="#f472b6" text-anchor="middle" font-weight="700">XDP_GEN Hook ★</text>
+        <text x="410" y="108" font-size="10" fill="#94a3b8" text-anchor="middle">(Packet Generation)</text>
+        <text x="410" y="124" font-size="9" fill="#64748b" text-anchor="middle">in xdp_do_flush()</text>
+
+        <!-- XDP_EGRESS Hook -->
+        <rect x="580" y="60" width="200" height="80" rx="6" fill="#1a2332" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="680" y="90" font-size="13" fill="#a78bfa" text-anchor="middle" font-weight="600">XDP_EGRESS Hook ★</text>
+        <text x="680" y="108" font-size="10" fill="#94a3b8" text-anchor="middle">(Egress Processing)</text>
+        <text x="680" y="124" font-size="9" fill="#64748b" text-anchor="middle">in xsk_tx_peek_desc()</text>
+
+        <!-- per-CPU queue (between XDP and XDP_GEN) -->
+        <rect x="170" y="180" width="180" height="55" rx="4" fill="#1a2332" stroke="#fbbf24" stroke-width="1"/>
+        <text x="260" y="200" font-size="11" fill="#fbbf24" text-anchor="middle">per-CPU eBPF Queue</text>
+        <text x="260" y="218" font-size="9" fill="#94a3b8" text-anchor="middle">(ACK/credit metadata)</text>
+
+        <!-- per-CPU xdp_frame pool -->
+        <rect x="400" y="180" width="180" height="55" rx="4" fill="#1a2332" stroke="#34d399" stroke-width="1"/>
+        <text x="490" y="200" font-size="11" fill="#34d399" text-anchor="middle">per-CPU xdp_frame Pool</text>
+        <text x="490" y="218" font-size="9" fill="#94a3b8" text-anchor="middle">(page_pool pre-alloc)</text>
+
+        <!-- PKT_QUEUE -->
+        <rect x="620" y="180" width="180" height="55" rx="4" fill="#1a2332" stroke="#f472b6" stroke-width="1"/>
+        <text x="710" y="200" font-size="11" fill="#f472b6" text-anchor="middle">PKT_QUEUE Map ★</text>
+        <text x="710" y="218" font-size="9" fill="#94a3b8" text-anchor="middle">(Pacing Engine)</text>
+
+        <!-- NIC -->
+        <rect x="360" y="270" width="240" height="50" rx="4" fill="#1a2332" stroke="#64748b"/>
+        <text x="480" y="300" font-size="12" fill="#e2e8f0" text-anchor="middle">NIC (mlx5 driver)</text>
+
+        <!-- AF_XDP sockets -->
+        <rect x="100" y="390" width="160" height="55" rx="4" fill="#1a2332" stroke="#a78bfa"/>
+        <text x="180" y="412" font-size="11" fill="#a78bfa" text-anchor="middle">AF_XDP Socket</text>
+        <text x="180" y="428" font-size="9" fill="#94a3b8" text-anchor="middle">(Data path IO)</text>
+
+        <rect x="320" y="390" width="160" height="55" rx="4" fill="#1a2332" stroke="#a78bfa"/>
+        <text x="400" y="412" font-size="11" fill="#a78bfa" text-anchor="middle">Control Path</text>
+        <text x="400" y="428" font-size="9" fill="#94a3b8" text-anchor="middle">(AF_XDP daemon)</text>
+
+        <rect x="540" y="390" width="180" height="55" rx="4" fill="#1a2332" stroke="#a78bfa"/>
+        <text x="630" y="412" font-size="11" fill="#a78bfa" text-anchor="middle">User-Space Lib</text>
+        <text x="630" y="428" font-size="9" fill="#94a3b8" text-anchor="middle">(Untrusted, no state access)</text>
+
+        <!-- eBPF maps -->
+        <rect x="60" y="555" width="170" height="50" rx="4" fill="#1a2332" stroke="#f472b6"/>
+        <text x="145" y="575" font-size="11" fill="#f472b6" text-anchor="middle">Connection State</text>
+        <text x="145" y="591" font-size="9" fill="#94a3b8" text-anchor="middle">eBPF Hashmap</text>
+
+        <rect x="260" y="555" width="170" height="50" rx="4" fill="#1a2332" stroke="#f472b6"/>
+        <text x="345" y="575" font-size="11" fill="#f472b6" text-anchor="middle">CC State</text>
+        <text x="345" y="591" font-size="9" fill="#94a3b8" text-anchor="middle">eBPF Array (mmapable)</text>
+
+        <rect x="460" y="555" width="170" height="50" rx="4" fill="#1a2332" stroke="#f472b6"/>
+        <text x="545" y="575" font-size="11" fill="#f472b6" text-anchor="middle">BPF Timer</text>
+        <text x="545" y="591" font-size="9" fill="#94a3b8" text-anchor="middle">Async callback trigger</text>
+
+        <rect x="660" y="555" width="170" height="50" rx="4" fill="#1a2332" stroke="#f472b6"/>
+        <text x="745" y="575" font-size="11" fill="#f472b6" text-anchor="middle">bpf_rbtree</text>
+        <text x="745" y="591" font-size="9" fill="#94a3b8" text-anchor="middle">(Homa credit list)</text>
+
+        <!-- eBPF Verifier -->
+        <rect x="260" y="640" width="440" height="45" rx="4" fill="rgba(34,211,238,0.08)" stroke="#22d3ee" stroke-dasharray="4,3"/>
+        <text x="480" y="667" font-size="12" fill="#22d3ee" text-anchor="middle">eBPF Verifier — validates all programs (unchanged by eTran)</text>
+
+        <!-- Arrows -->
+        <!-- XDP -> per-CPU queue -->
+        <line x1="150" y1="140" x2="220" y2="180" stroke="#fbbf24" stroke-width="1" marker-end="url(#arrow-y)"/>
+        <text x="160" y="165" font-size="8" fill="#fbbf24">bpf_map_push_elem()</text>
+
+        <!-- per-CPU queue -> XDP_GEN -->
+        <line x1="310" y1="180" x2="370" y2="140" stroke="#fbbf24" stroke-width="1" marker-end="url(#arrow-p)"/>
+        <text x="310" y="155" font-size="8" fill="#fbbf24">bpf_map_pop_elem()</text>
+
+        <!-- XDP_GEN -> xdp_frame pool -->
+        <line x1="430" y1="140" x2="470" y2="180" stroke="#34d399" stroke-width="1" marker-end="url(#arrow-g)"/>
+        <text x="460" y="158" font-size="8" fill="#34d399">consume frame</text>
+
+        <!-- XDP_GEN -> NIC -->
+        <line x1="410" y1="140" x2="450" y2="270" stroke="#f472b6" stroke-width="1.5" marker-end="url(#arrow-p)"/>
+        <text x="415" y="220" font-size="8" fill="#f472b6">XDP_TX → transmit</text>
+
+        <!-- XDP_EGRESS -> PKT_QUEUE -->
+        <line x1="700" y1="140" x2="710" y2="180" stroke="#a78bfa" stroke-width="1" marker-end="url(#arrow-v)"/>
+
+        <!-- NIC <-> AF_XDP -->
+        <line x1="420" y1="320" x2="220" y2="390" stroke="#94a3b8" stroke-width="1" stroke-dasharray="4,3"/>
+        <line x1="480" y1="320" x2="400" y2="390" stroke="#94a3b8" stroke-width="1" stroke-dasharray="4,3"/>
+
+        <defs>
+          <marker id="arrow-y" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#fbbf24"/></marker>
+          <marker id="arrow-p" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#f472b6"/></marker>
+          <marker id="arrow-g" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#34d399"/></marker>
+          <marker id="arrow-v" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#a78bfa"/></marker>
+        </defs>
+      </svg>
+    </div>
+
+    <h3>Class Diagram — XDP_GEN Related Structures</h3>
+    <div class="diagram-box">
+      <div class="title">UML Class Diagram (Inferred from Paper + Linux v6.6 Base)</div>
+      <svg viewBox="0 0 960 540" width="100%" style="max-width:960px;">
+        <!-- xdp_md (context) -->
+        <rect x="50" y="20" width="240" height="170" rx="4" fill="#1a2332" stroke="#22d3ee" stroke-width="1.5"/>
+        <rect x="50" y="20" width="240" height="28" rx="4" fill="rgba(34,211,238,0.12)"/>
+        <text x="170" y="39" font-size="12" fill="#22d3ee" text-anchor="middle" font-weight="700">«struct» xdp_md</text>
+        <line x1="50" y1="48" x2="290" y2="48" stroke="var(--border)"/>
+        <text x="60" y="66" font-size="10" fill="#cbd5e1">+ data: __u32</text>
+        <text x="60" y="82" font-size="10" fill="#cbd5e1">+ data_end: __u32</text>
+        <text x="60" y="98" font-size="10" fill="#cbd5e1">+ data_meta: __u32</text>
+        <text x="60" y="114" font-size="10" fill="#cbd5e1">+ ingress_ifindex: __u32</text>
+        <text x="60" y="130" font-size="10" fill="#cbd5e1">+ rx_queue_index: __u32</text>
+        <text x="60" y="146" font-size="10" fill="#f472b6">+ umem_id: __u32  ★ (eTran)</text>
+        <line x1="50" y1="156" x2="290" y2="156" stroke="var(--border)"/>
+        <text x="60" y="178" font-size="9" fill="#94a3b8">Shared by XDP, XDP_GEN, XDP_EGRESS</text>
+
+        <!-- xdp_frame -->
+        <rect x="370" y="20" width="240" height="155" rx="4" fill="#1a2332" stroke="#34d399" stroke-width="1.5"/>
+        <rect x="370" y="20" width="240" height="28" rx="4" fill="rgba(52,211,153,0.12)"/>
+        <text x="490" y="39" font-size="12" fill="#34d399" text-anchor="middle" font-weight="700">«struct» xdp_frame</text>
+        <line x1="370" y1="48" x2="610" y2="48" stroke="var(--border)"/>
+        <text x="380" y="66" font-size="10" fill="#cbd5e1">+ data: void*</text>
+        <text x="380" y="82" font-size="10" fill="#cbd5e1">+ len: u16</text>
+        <text x="380" y="98" font-size="10" fill="#cbd5e1">+ headroom: u16</text>
+        <text x="380" y="114" font-size="10" fill="#cbd5e1">+ metasize: u32</text>
+        <text x="380" y="130" font-size="10" fill="#cbd5e1">+ frame_sz: u32</text>
+        <text x="380" y="146" font-size="10" fill="#f472b6">+ tx_timestamp: u64  ★</text>
+        <line x1="370" y1="156" x2="610" y2="156" stroke="var(--border)"/>
+
+        <!-- PKT_QUEUE map -->
+        <rect x="690" y="20" width="250" height="175" rx="4" fill="#1a2332" stroke="#f472b6" stroke-width="2"/>
+        <rect x="690" y="20" width="250" height="28" rx="4" fill="rgba(244,114,182,0.12)"/>
+        <text x="815" y="39" font-size="12" fill="#f472b6" text-anchor="middle" font-weight="700">«eBPF Map» PKT_QUEUE ★</text>
+        <line x1="690" y1="48" x2="940" y2="48" stroke="var(--border)"/>
+        <text x="700" y="66" font-size="10" fill="#cbd5e1">+ buckets[N]: pkt_bucket</text>
+        <text x="700" y="82" font-size="10" fill="#cbd5e1">+ type: BPF_MAP_TYPE_PKT_QUEUE</text>
+        <line x1="690" y1="92" x2="940" y2="92" stroke="var(--border)"/>
+        <text x="700" y="110" font-size="10" fill="#cbd5e1">+ enqueue(bucket_idx, xdp_frame*)</text>
+        <text x="700" y="126" font-size="10" fill="#cbd5e1">+ dequeue(bucket_idx): xdp_frame*</text>
+        <text x="700" y="142" font-size="10" fill="#cbd5e1">+ bpf_dynptr_from_xdp_frame()</text>
+        <text x="700" y="158" font-size="10" fill="#cbd5e1">+ dev_xdp_enqueue() [kfunc]</text>
+        <line x1="690" y1="168" x2="940" y2="168" stroke="var(--border)"/>
+        <text x="700" y="186" font-size="9" fill="#94a3b8">Bucket idx: by tx_timestamp or explicit</text>
+
+        <!-- page_pool -->
+        <rect x="50" y="250" width="240" height="110" rx="4" fill="#1a2332" stroke="#fbbf24" stroke-width="1"/>
+        <rect x="50" y="250" width="240" height="28" rx="4" fill="rgba(251,191,36,0.1)"/>
+        <text x="170" y="269" font-size="12" fill="#fbbf24" text-anchor="middle" font-weight="700">page_pool allocator</text>
+        <line x1="50" y1="278" x2="290" y2="278" stroke="var(--border)"/>
+        <text x="60" y="296" font-size="10" fill="#cbd5e1">Pre-allocates xdp_frame pool</text>
+        <text x="60" y="312" font-size="10" fill="#cbd5e1">per-CPU for XDP_GEN</text>
+        <text x="60" y="328" font-size="10" fill="#cbd5e1">Optimized for XDP fast path</text>
+        <text x="60" y="344" font-size="10" fill="#94a3b8">Existing Linux infra, reused</text>
+
+        <!-- per-CPU queue -->
+        <rect x="370" y="250" width="240" height="110" rx="4" fill="#1a2332" stroke="#fbbf24" stroke-width="1"/>
+        <rect x="370" y="250" width="240" height="28" rx="4" fill="rgba(251,191,36,0.1)"/>
+        <text x="490" y="269" font-size="12" fill="#fbbf24" text-anchor="middle" font-weight="700">per-CPU eBPF Queue</text>
+        <line x1="370" y1="278" x2="610" y2="278" stroke="var(--border)"/>
+        <text x="380" y="296" font-size="10" fill="#cbd5e1">+ push(ack_metadata)</text>
+        <text x="380" y="312" font-size="10" fill="#cbd5e1">+ pop(): ack_metadata</text>
+        <line x1="370" y1="322" x2="610" y2="322" stroke="var(--border)"/>
+        <text x="380" y="340" font-size="10" fill="#94a3b8">XDP pushes, XDP_GEN pops</text>
+
+        <!-- BPF timer -->
+        <rect x="690" y="250" width="250" height="110" rx="4" fill="#1a2332" stroke="#a78bfa" stroke-width="1"/>
+        <rect x="690" y="250" width="250" height="28" rx="4" fill="rgba(167,139,250,0.1)"/>
+        <text x="815" y="269" font-size="12" fill="#a78bfa" text-anchor="middle" font-weight="700">BPF Timer (Extended) ★</text>
+        <line x1="690" y1="278" x2="940" y2="278" stroke="var(--border)"/>
+        <text x="700" y="296" font-size="10" fill="#cbd5e1">+ Mode 1: NETTX_SOFTIRQ (per-CPU)</text>
+        <text x="700" y="312" font-size="10" fill="#cbd5e1">+ Mode 2: kthread (global)</text>
+        <line x1="690" y1="322" x2="940" y2="322" stroke="var(--border)"/>
+        <text x="700" y="340" font-size="10" fill="#94a3b8">Triggers pacing callbacks async</text>
+
+        <!-- Relationship arrows -->
+        <!-- xdp_md --uses--> xdp_frame -->
+        <line x1="290" y1="90" x2="370" y2="90" stroke="#94a3b8" stroke-width="1" stroke-dasharray="4,3"/>
+        <text x="320" y="84" font-size="8" fill="#94a3b8">wraps</text>
+
+        <!-- xdp_frame --stored in--> PKT_QUEUE -->
+        <line x1="610" y1="90" x2="690" y2="90" stroke="#f472b6" stroke-width="1"/>
+        <text x="640" y="84" font-size="8" fill="#f472b6">stored in</text>
+
+        <!-- page_pool --provides--> xdp_frame -->
+        <line x1="240" y1="250" x2="420" y2="175" stroke="#fbbf24" stroke-width="1" stroke-dasharray="4,3"/>
+        <text x="290" y="220" font-size="8" fill="#fbbf24">pre-allocates</text>
+
+        <!-- PKT_QUEUE --triggered by--> BPF timer -->
+        <line x1="815" y1="195" x2="815" y2="250" stroke="#a78bfa" stroke-width="1" stroke-dasharray="4,3"/>
+        <text x="825" y="225" font-size="8" fill="#a78bfa">triggers dequeue</text>
+
+        <!-- Legend -->
+        <rect x="50" y="420" width="900" height="100" rx="6" fill="var(--bg2)" stroke="var(--border)"/>
+        <text x="70" y="445" font-size="11" fill="#94a3b8" font-weight="600">LEGEND</text>
+        <rect x="70" y="458" width="12" height="12" fill="rgba(244,114,182,0.3)" stroke="#f472b6"/>
+        <text x="90" y="469" font-size="10" fill="#f472b6">★ New eTran addition to kernel</text>
+        <rect x="300" y="458" width="12" height="12" fill="rgba(34,211,238,0.3)" stroke="#22d3ee"/>
+        <text x="320" y="469" font-size="10" fill="#22d3ee">Existing Linux XDP infra (reused)</text>
+        <rect x="560" y="458" width="12" height="12" fill="rgba(251,191,36,0.3)" stroke="#fbbf24"/>
+        <text x="580" y="469" font-size="10" fill="#fbbf24">Data flow / intermediary</text>
+        <rect x="780" y="458" width="12" height="12" fill="rgba(167,139,250,0.3)" stroke="#a78bfa"/>
+        <text x="800" y="469" font-size="10" fill="#a78bfa">Extended existing mechanism</text>
+        <line x1="70" y1="490" x2="160" y2="490" stroke="#94a3b8" stroke-dasharray="4,3"/>
+        <text x="170" y="494" font-size="10" fill="#94a3b8">Dashed = logical/indirect relationship</text>
+        <line x1="400" y1="490" x2="490" y2="490" stroke="#94a3b8"/>
+        <text x="500" y="494" font-size="10" fill="#94a3b8">Solid = direct data/control flow</text>
+      </svg>
+    </div>
+  </div>
+
+  <!-- KERNEL HOOK IMPL -->
+  <div class="section" id="kernel">
+    <h2>Kernel-Side Hook Implementation (Reconstructed)</h2>
+    <p>Based on the paper's description that XDP_GEN is placed in <code>xdp_do_flush()</code> and uses pre-allocated <code>xdp_frame</code> pools with a NAPI-budget-bounded loop, the following is the reconstructed kernel implementation structure.</p>
+
+    <h3>1. Hook Placement: Inside <code>xdp_do_flush()</code></h3>
+    <p>In the vanilla Linux v6.6 kernel, <code>xdp_do_flush()</code> (in <code>net/core/filter.c</code>) flushes pending XDP redirect operations. eTran extends this function to call XDP_GEN after the flush.</p>
+
+    <div class="code-block">
+<span class="comment">/* net/core/filter.c (eTran-modified) — Reconstructed from paper §3.2.1 */</span>
+
+<span class="keyword">void</span> <span class="func">xdp_do_flush</span>(<span class="keyword">void</span>)
+{
+    <span class="comment">/* Original flush logic: flush devmap, cpumap, xskmap bulk queues */</span>
+    <span class="func">__dev_flush</span>();
+    <span class="func">__cpu_map_flush</span>();
+    <span class="func">__xsk_map_flush</span>();
+
+    <span class="comment">/* ★ eTran addition: Run XDP_GEN programs after ingress flush */</span>
+    <span class="func">dev_xdp_gen_run</span>();    <span class="comment">/* New function added by eTran */</span>
+}
+    </div>
+
+    <h3>2. Core XDP_GEN Execution Loop</h3>
+    <p>The paper states XDP_GEN runs in a "finite loop whose budget is the same as NAPI" and uses "pre-allocated frames from <code>page_pool</code>". The loop terminates on <code>XDP_ABORTED</code> or budget exhaustion.</p>
+
+    <div class="code-block">
+<span class="comment">/* ★ Reconstructed from paper §3.2.1 — dev_xdp_gen_run() */</span>
+
+<span class="keyword">static void</span> <span class="func">dev_xdp_gen_run</span>(<span class="keyword">void</span>)
+{
+    <span class="type">struct</span> bpf_prog *prog = <span class="func">rcu_dereference</span>(xdp_gen_prog);
+    <span class="type">struct</span> xdp_frame *frames;     <span class="comment">/* per-CPU pre-allocated pool */</span>
+    <span class="type">struct</span> xdp_buff xdp_buf;
+    <span class="keyword">int</span> budget = NAPI_POLL_WEIGHT; <span class="comment">/* typically 64 */</span>
+    <span class="keyword">int</span> i, act;
+
+    <span class="keyword">if</span> (!prog)
+        <span class="keyword">return</span>;
+
+    <span class="comment">/* Pre-allocate frames from page_pool (amortized batch) */</span>
+    frames = <span class="func">page_pool_alloc_batch</span>(per_cpu_pool, budget);
+
+    <span class="keyword">for</span> (i = 0; i < budget; i++) {
+        <span class="comment">/* Initialize xdp_buff from pre-allocated frame */</span>
+        <span class="func">xdp_init_buff_from_frame</span>(&xdp_buf, &frames[i]);
+
+        <span class="comment">/* Run the eBPF program attached to XDP_GEN */</span>
+        act = <span class="func">bpf_prog_run_xdp</span>(prog, &xdp_buf);
+
+        <span class="keyword">switch</span> (act) {
+        <span class="keyword">case</span> XDP_TX:
+            <span class="comment">/* Transmit the generated ACK/credit packet */</span>
+            <span class="func">dev_xdp_enqueue</span>(&xdp_buf);   <span class="comment">/* wrapped as kfunc */</span>
+            <span class="keyword">break</span>;
+        <span class="keyword">case</span> XDP_DROP:
+            <span class="comment">/* Discard this frame, recycle to page_pool */</span>
+            <span class="func">page_pool_recycle</span>(&frames[i]);
+            <span class="keyword">break</span>;
+        <span class="keyword">case</span> XDP_ABORTED:
+            <span class="comment">/* No more packets to generate — exit loop */</span>
+            <span class="func">page_pool_recycle_remaining</span>(frames, i, budget);
+            <span class="keyword">goto</span> flush;
+        }
+    }
+
+flush:
+    <span class="comment">/* Flush all generated packets to NIC */</span>
+    <span class="func">dev_xdp_flush</span>();
+}
+    </div>
+
+    <h3>3. Verifier Registration</h3>
+    <p>Per paper §5: "eTran does not change the verifier but just registers new eBPF hooks and kfuncs." XDP_GEN reuses the XDP program type with an additional attach type.</p>
+
+    <div class="code-block">
+<span class="comment">/* kernel/bpf/verifier.c — Registration (reconstructed from paper §5) */</span>
+
+<span class="comment">/* XDP_GEN uses the same context access checks as XDP */</span>
+<span class="comment">/* The verifier checks:</span>
+<span class="comment"> *   (a) Program behaviors: bounded loops, NULL checks, no deadlock</span>
+<span class="comment"> *   (b) Context access: same as XDP (struct xdp_md)</span>
+<span class="comment"> *   (c) Helper/kfunc usage: SUBSET of XDP helpers</span>
+<span class="comment"> *       - EXCLUDES: bpf_redirect_map (prevent arbitrary redirect)</span>
+<span class="comment"> *       - EXCLUDES: bpf_sk_lookup_tcp (no socket access)</span>
+<span class="comment"> *       - INCLUDES: bpf_map_push/pop_elem, bpf_map_lookup_elem</span>
+<span class="comment"> */</span>
+    </div>
+
+    <h3>4. Helpers Exposed (Security Boundary)</h3>
+    <table class="data-table">
+      <thead>
+        <tr><th>Helper / kfunc</th><th>XDP</th><th>XDP_GEN</th><th>Reason</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>bpf_map_lookup_elem</code></td><td>✓</td><td>✓</td><td>Read transport states</td></tr>
+        <tr><td><code>bpf_map_push_elem</code></td><td>✓</td><td>✓</td><td>Enqueue metadata</td></tr>
+        <tr><td><code>bpf_map_pop_elem</code></td><td>✓</td><td>✓</td><td>Dequeue ACK metadata</td></tr>
+        <tr><td><code>bpf_xdp_adjust_head</code></td><td>✓</td><td>✓</td><td>Manipulate packet headers</td></tr>
+        <tr><td><code>bpf_fib_lookup</code></td><td>✓</td><td>✓</td><td>Route lookup for headers</td></tr>
+        <tr><td><code>bpf_redirect_map</code></td><td>✓</td><td style="color:#f472b6">✗</td><td>Prevent arbitrary redirects</td></tr>
+        <tr><td><code>bpf_sk_lookup_tcp</code></td><td>✓</td><td style="color:#f472b6">✗</td><td>No socket access needed</td></tr>
+        <tr><td><code>dev_xdp_enqueue</code> (kfunc)</td><td>✗</td><td>✓</td><td>Transmit generated packets</td></tr>
+        <tr><td><code>bpf_dynptr_from_xdp_frame</code></td><td>✗</td><td>✓</td><td>Safe xdp_frame access</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- EXECUTION LIFECYCLE -->
+  <div class="section" id="lifecycle">
+    <h2>XDP_GEN Execution Lifecycle</h2>
+    <p>This section traces the complete lifecycle of XDP_GEN execution during a single NAPI poll cycle, from packet arrival to ACK/credit transmission.</p>
+
+    <h3>Sequence: TCP ACK Generation</h3>
+    <div class="flow-step" style="border-left-color: #22d3ee;">
+      <div class="step-num" style="color:#22d3ee">01</div>
+      <div class="step-text"><strong>NAPI poll begins.</strong> NIC driver (mlx5) receives incoming data packets. The XDP eBPF program is invoked for each packet in the driver's RX loop.</div>
+    </div>
+    <div class="flow-step" style="border-left-color: #22d3ee;">
+      <div class="step-num" style="color:#22d3ee">02</div>
+      <div class="step-text"><strong>XDP program processes data packet.</strong> Looks up TCP connection state in eBPF hashmap using 4-tuple. Verifies <code>ack</code>/<code>seq</code> values. If valid, updates TCP window state.</div>
+    </div>
+    <div class="flow-step" style="border-left-color: #fbbf24;">
+      <div class="step-num" style="color:#fbbf24">03</div>
+      <div class="step-text"><strong>XDP pushes ACK metadata.</strong> If an ACK needs to be sent, XDP calls <code>bpf_map_push_elem()</code> to push metadata (seq, ack number, connection ID) into a <strong>per-CPU eBPF queue</strong>.</div>
+    </div>
+    <div class="flow-step" style="border-left-color: #22d3ee;">
+      <div class="step-num" style="color:#22d3ee">04</div>
+      <div class="step-text"><strong>XDP redirects data to AF_XDP.</strong> The data packet is redirected to user-space via AF_XDP socket (<code>XDP_REDIRECT</code>). Continues processing more packets until budget exhausted.</div>
+    </div>
+    <div class="flow-step" style="border-left-color: #94a3b8;">
+      <div class="step-num" style="color:#94a3b8">05</div>
+      <div class="step-text"><strong><code>xdp_do_flush()</code> is called.</strong> End of NAPI poll. Original flush logic runs (devmap, cpumap, xskmap). Then eTran's XDP_GEN hook is triggered.</div>
+    </div>
+    <div class="flow-step" style="border-left-color: #f472b6;">
+      <div class="step-num" style="color:#f472b6">06</div>
+      <div class="step-text"><strong>XDP_GEN loop begins.</strong> Pre-allocated <code>xdp_frame</code> pool from <code>page_pool</code> is available. Loop iterates up to NAPI budget (64).</div>
+    </div>
+    <div class="flow-step" style="border-left-color: #f472b6;">
+      <div class="step-num" style="color:#f472b6">07</div>
+      <div class="step-text"><strong>XDP_GEN pops metadata.</strong> Calls <code>bpf_map_pop_elem()</code> on the per-CPU queue. If empty → returns <code>XDP_ABORTED</code> to terminate loop.</div>
+    </div>
+    <div class="flow-step" style="border-left-color: #f472b6;">
+      <div class="step-num" style="color:#f472b6">08</div>
+      <div class="step-text"><strong>XDP_GEN fills packet frame.</strong> Constructs ACK packet headers (Ethernet, IP, TCP) in the pre-allocated <code>xdp_frame</code> using popped metadata. Returns <code>XDP_TX</code>.</div>
+    </div>
+    <div class="flow-step" style="border-left-color: #34d399;">
+      <div class="step-num" style="color:#34d399">09</div>
+      <div class="step-text"><strong>Kernel transmits the ACK.</strong> The <code>XDP_TX</code> action sends the generated ACK packet via <code>dev_xdp_enqueue()</code> to the NIC transmit queue.</div>
+    </div>
+    <div class="flow-step" style="border-left-color: #34d399;">
+      <div class="step-num" style="color:#34d399">10</div>
+      <div class="step-text"><strong>Loop repeats or terminates.</strong> Steps 07–09 repeat for each queued ACK. On <code>XDP_ABORTED</code> or budget exhaustion, remaining frames are recycled and <code>dev_xdp_flush()</code> completes.</div>
+    </div>
+
+    <div class="note-box">
+      <strong>Key Performance Insight:</strong> ACK coalescing happens naturally — multiple data packets processed in one NAPI poll produce multiple ACK metadata entries, which XDP_GEN batches into ACK packets at the end. This mirrors coalescing in Google Falcon, TAS, Caladan, and eRPC.
+    </div>
+
+    <h3>Sequence: Homa Credit Generation</h3>
+    <p>For Homa, the flow is similar but the XDP_GEN program is more complex:</p>
+    <div class="flow-step" style="border-left-color: #f472b6;">
+      <div class="step-num" style="color:#f472b6">H1</div>
+      <div class="step-text"><strong>XDP_GEN selects RPCs from credit list.</strong> Uses <code>bpf_rbtree_lower_bound()</code> to find candidate RPCs ranked by priority (bytes remaining). Ensures max one RPC per peer.</div>
+    </div>
+    <div class="flow-step" style="border-left-color: #f472b6;">
+      <div class="step-num" style="color:#f472b6">H2</div>
+      <div class="step-text"><strong>Looks up RPC state.</strong> Queries eBPF hashmap for RPC states, allocates credits based on remaining bytes and priority.</div>
+    </div>
+    <div class="flow-step" style="border-left-color: #f472b6;">
+      <div class="step-num" style="color:#f472b6">H3</div>
+      <div class="step-text"><strong>Removes finished RPCs.</strong> Cleans up completed RPCs from the credit list (<code>bpf_rbtree</code>).</div>
+    </div>
+    <div class="flow-step" style="border-left-color: #f472b6;">
+      <div class="step-num" style="color:#f472b6">H4</div>
+      <div class="step-text"><strong>Sends credit packets.</strong> Fills pre-allocated frames with credit packet data, returns <code>XDP_TX</code>. Uses <code>bpf_tail_call</code> to split complex logic across multiple programs to satisfy verifier instruction limits.</div>
+    </div>
+  </div>
+
+  <!-- DATA STRUCTURES -->
+  <div class="section" id="datastructs">
+    <h2>Data Structures Detail</h2>
+
+    <h3>per-CPU ACK Metadata Queue</h3>
+    <p>The bridge between XDP (ingress) and XDP_GEN (packet generation). XDP pushes, XDP_GEN pops.</p>
+    <div class="code-block">
+<span class="comment">/* eBPF program side — per-CPU queue for ACK metadata */</span>
+<span class="comment">/* This is a standard eBPF map, not a new type */</span>
+
+<span class="keyword">struct</span> {
+    __uint(type, <span class="macro">BPF_MAP_TYPE_QUEUE</span>);  <span class="comment">/* or PERCPU variant */</span>
+    __uint(max_entries, 256);
+    __type(value, <span class="keyword">struct</span> ack_meta);
+} <span class="func">ack_queue</span> SEC(<span class="string">".maps"</span>);
+
+<span class="comment">/* TCP ACK metadata structure (★ transport-specific) */</span>
+<span class="keyword">struct</span> ack_meta {
+    __u32 saddr, daddr;
+    __u16 sport, dport;
+    __u32 seq;
+    __u32 ack_seq;
+    __u16 window;
+    <span class="comment">/* Additional fields as needed by the transport */</span>
+};
+
+<span class="comment">/* In XDP program (ingress): */</span>
+<span class="func">bpf_map_push_elem</span>(&ack_queue, &meta, <span class="macro">BPF_EXIST</span>);
+
+<span class="comment">/* In XDP_GEN program (packet generation): */</span>
+<span class="keyword">int</span> ret = <span class="func">bpf_map_pop_elem</span>(&ack_queue, &meta);
+<span class="keyword">if</span> (ret < 0)
+    <span class="keyword">return</span> <span class="macro">XDP_ABORTED</span>;  <span class="comment">/* Queue empty, stop generating */</span>
+    </div>
+
+    <h3>PKT_QUEUE (BPF_MAP_TYPE_PKT_QUEUE) ★</h3>
+    <p>New eBPF map type for pacing. Contains buckets with slots storing <code>xdp_frame</code> pointers.</p>
+    <div class="code-block">
+<span class="comment">/* ★ New eBPF map type added by eTran (kernel/bpf/) */</span>
+<span class="comment">/* Reconstructed from paper §3.2.2 */</span>
+
+<span class="keyword">struct</span> pkt_queue_bucket {
+    <span class="type">struct</span> xdp_frame *slots[BUCKET_SIZE];
+    <span class="keyword">int</span> head, tail;
+    <span class="comment">/* For timing wheel: maps to a time slot */</span>
+    <span class="comment">/* For credit-based: maps to an RPC ID */</span>
+};
+
+<span class="keyword">struct</span> bpf_map_pkt_queue {
+    <span class="type">struct</span> bpf_map map;       <span class="comment">/* base eBPF map */</span>
+    <span class="type">struct</span> pkt_queue_bucket *buckets;
+    __u32 nr_buckets;
+    <span class="comment">/* Timing wheel state (for rate-based pacing) */</span>
+    __u64 current_tick;
+    __u64 tick_interval_ns;
+};
+
+<span class="comment">/* Usage depends on pacing mechanism: */</span>
+<span class="comment">/*</span>
+<span class="comment"> * Rate-based (TCP/DCTCP): bucket_idx = tx_timestamp / tick_interval</span>
+<span class="comment"> *   → Implements Carousel-style timing wheel</span>
+<span class="comment"> *</span>
+<span class="comment"> * Credit-based (Homa): bucket_idx = RPC_ID</span>
+<span class="comment"> *   → Packets queued per-RPC, dequeued on credit replenishment</span>
+<span class="comment"> */</span>
+    </div>
+
+    <h3>Extended xdp_md Context</h3>
+    <div class="code-block">
+<span class="comment">/* include/uapi/linux/bpf.h — eTran extension */</span>
+
+<span class="keyword">struct</span> xdp_md {
+    __u32 data;
+    __u32 data_end;
+    __u32 data_meta;
+    __u32 ingress_ifindex;
+    __u32 rx_queue_index;
+    __u32 egress_ifindex;   <span class="comment">/* existing in v6.6 */</span>
+
+    <span class="comment">/* ★ eTran addition: identifies UMEM ownership */</span>
+    <span class="type">__u32</span> <span class="func">umem_id</span>;   <span class="comment">/* For XDP_EGRESS: validates packet belongs to app */</span>
+                     <span class="comment">/* For XDP (ingress): invalid/inaccessible */</span>
+                     <span class="comment">/* For XDP_GEN: N/A (kernel-generated frames) */</span>
+};
+    </div>
+  </div>
+
+  <!-- BPF PROGRAM SIDE -->
+  <div class="section" id="bpfprog">
+    <h2>eBPF Program Side (Transport Developer View)</h2>
+    <p>This shows what a transport developer writes when implementing the XDP_GEN program. Based on the TCP and Homa implementations described in §4.</p>
+
+    <h3>TCP ACK Generator (XDP_GEN program)</h3>
+    <div class="code-block">
+<span class="macro">SEC</span>(<span class="string">"xdp_gen"</span>)
+<span class="keyword">int</span> <span class="func">tcp_ack_gen</span>(<span class="type">struct</span> xdp_md *ctx)
+{
+    <span class="type">struct</span> ack_meta meta;
+    <span class="keyword">int</span> ret;
+
+    <span class="comment">/* Step 1: Pop ACK metadata from per-CPU queue */</span>
+    ret = <span class="func">bpf_map_pop_elem</span>(&ack_queue, &meta);
+    <span class="keyword">if</span> (ret < 0)
+        <span class="keyword">return</span> <span class="macro">XDP_ABORTED</span>;  <span class="comment">/* No more ACKs to send */</span>
+
+    <span class="comment">/* Step 2: Access the pre-allocated packet frame */</span>
+    <span class="keyword">void</span> *data = (<span class="keyword">void</span> *)(<span class="keyword">long</span>)ctx->data;
+    <span class="keyword">void</span> *data_end = (<span class="keyword">void</span> *)(<span class="keyword">long</span>)ctx->data_end;
+
+    <span class="comment">/* Step 3: Build Ethernet header */</span>
+    <span class="type">struct</span> ethhdr *eth = data;
+    <span class="keyword">if</span> ((<span class="keyword">void</span> *)(eth + 1) > data_end)
+        <span class="keyword">return</span> <span class="macro">XDP_DROP</span>;
+    <span class="comment">/* Fill MAC addresses via bpf_fib_lookup or cached result */</span>
+
+    <span class="comment">/* Step 4: Build IP header */</span>
+    <span class="type">struct</span> iphdr *ip = (<span class="keyword">void</span> *)(eth + 1);
+    <span class="keyword">if</span> ((<span class="keyword">void</span> *)(ip + 1) > data_end)
+        <span class="keyword">return</span> <span class="macro">XDP_DROP</span>;
+    ip->saddr = meta.saddr;
+    ip->daddr = meta.daddr;
+    ip->protocol = <span class="macro">IPPROTO_TCP</span>;
+    ip->tot_len = <span class="func">bpf_htons</span>(<span class="keyword">sizeof</span>(*ip) + <span class="keyword">sizeof</span>(<span class="type">struct</span> tcphdr));
+    <span class="comment">/* ... fill remaining IP fields ... */</span>
+
+    <span class="comment">/* Step 5: Build TCP ACK header */</span>
+    <span class="type">struct</span> tcphdr *tcp = (<span class="keyword">void</span> *)(ip + 1);
+    <span class="keyword">if</span> ((<span class="keyword">void</span> *)(tcp + 1) > data_end)
+        <span class="keyword">return</span> <span class="macro">XDP_DROP</span>;
+    tcp->source = meta.sport;
+    tcp->dest   = meta.dport;
+    tcp->seq    = <span class="func">bpf_htonl</span>(meta.seq);
+    tcp->ack_seq = <span class="func">bpf_htonl</span>(meta.ack_seq);
+    tcp->ack = 1;
+    tcp->window = <span class="func">bpf_htons</span>(meta.window);
+    <span class="comment">/* ... compute checksum ... */</span>
+
+    <span class="comment">/* Step 6: Transmit the ACK packet */</span>
+    <span class="keyword">return</span> <span class="macro">XDP_TX</span>;
+}
+    </div>
+
+    <h3>Homa Credit Generator (XDP_GEN program, uses tail calls)</h3>
+    <div class="code-block">
+<span class="comment">/* Homa uses bpf_tail_call to split complex logic (paper §4.2) */</span>
+<span class="comment">/* States are passed via per-CPU variables in .bss section */</span>
+
+<span class="keyword">struct</span> {
+    __uint(type, <span class="macro">BPF_MAP_TYPE_PROG_ARRAY</span>);
+    __uint(max_entries, 4);
+    __type(key, __u32);
+    __type(value, __u32);
+} <span class="func">gen_progs</span> SEC(<span class="string">".maps"</span>);
+
+<span class="comment">/* Per-CPU state for passing between tail-called programs */</span>
+<span class="keyword">struct</span> gen_state {
+    __u64 last_min_bytes;
+    __u32 last_peerid;
+    __u32 credits_allocated;
+} gen_ctx SEC(<span class="string">".bss"</span>);
+
+<span class="macro">SEC</span>(<span class="string">"xdp_gen"</span>)
+<span class="keyword">int</span> <span class="func">homa_credit_gen_phase1</span>(<span class="type">struct</span> xdp_md *ctx)
+{
+    <span class="comment">/* Phase 1: Select candidate RPCs from bpf_rbtree credit list */</span>
+    <span class="comment">/* Uses bpf_rbtree_lower_bound() to find RPCs by priority */</span>
+    <span class="comment">/* Ensures max 1 RPC per peer (emulates 2-level rbtree) */</span>
+    <span class="comment">/* Store selection in gen_ctx (.bss per-CPU) */</span>
+
+    <span class="func">bpf_tail_call</span>(ctx, &gen_progs, 1);  <span class="comment">/* → phase 2 */</span>
+    <span class="keyword">return</span> <span class="macro">XDP_ABORTED</span>;
+}
+
+<span class="macro">SEC</span>(<span class="string">"xdp_gen/phase2"</span>)
+<span class="keyword">int</span> <span class="func">homa_credit_gen_phase2</span>(<span class="type">struct</span> xdp_md *ctx)
+{
+    <span class="comment">/* Phase 2: Look up RPC state, allocate credits */</span>
+    <span class="comment">/* Phase 3: Remove finished RPCs from credit list */</span>
+
+    <span class="func">bpf_tail_call</span>(ctx, &gen_progs, 2);  <span class="comment">/* → phase 3 */</span>
+    <span class="keyword">return</span> <span class="macro">XDP_ABORTED</span>;
+}
+
+<span class="macro">SEC</span>(<span class="string">"xdp_gen/phase3"</span>)
+<span class="keyword">int</span> <span class="func">homa_credit_gen_phase3</span>(<span class="type">struct</span> xdp_md *ctx)
+{
+    <span class="comment">/* Phase 4: Build and send credit packets for selected RPCs */</span>
+    <span class="comment">/* Fill Ethernet/IP/Homa headers */</span>
+    <span class="comment">/* Return XDP_TX to transmit, XDP_ABORTED when done */</span>
+    <span class="keyword">return</span> <span class="macro">XDP_TX</span>;
+}
+    </div>
+
+    <h3>Transport Developer API (from Paper Appendix C, Listing 1)</h3>
+    <table class="data-table">
+      <thead>
+        <tr><th>API (XDP_GEN context)</th><th>Purpose</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>bpf_dequeue_ack(map)</code></td><td>Pop ACK metadata from queue (called at XDP_GEN)</td></tr>
+        <tr><td><code>bpf_dequeue_candidate(root, less)</code></td><td>Select candidate RPC from rbtree credit list</td></tr>
+        <tr><td><code>bpf_fetch_pkt(map, key)</code></td><td>Fetch queued packet from PKT_QUEUE</td></tr>
+        <tr><td><code>bpf_send_pkt(map, ifindex, flags)</code></td><td>Transmit packet via NIC queue</td></tr>
+        <tr><td><code>bpf_flush_pkt()</code></td><td>Flush all pending transmitted packets</td></tr>
+      </tbody>
+    </table>
+
+    <div class="note-box">
+      <strong>Lines of Code (from Table 1):</strong> TCP eBPF programs = 2,173 LoC; Homa eBPF programs = 5,349 LoC. Homa is significantly larger due to the complex receiver-driven credit scheduling that must fit within eBPF constraints using tail calls and single-rbtree emulation.
+    </div>
+  </div>
+</div>
+
+<script>
+function showTab(id) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  event.target.classList.add('active');
+}
+</script>
+</body>
+</html>
