@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>eTran XDP_GEN — 심층 구조 분석</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=Noto+Sans+KR:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0c0e14;
+  --bg2: #12151e;
+  --bg3: #1a1e2e;
+  --accent: #22d3ee;
+  --accent2: #a78bfa;
+  --accent3: #f472b6;
+  --accent4: #34d399;
+  --text: #e2e8f0;
+  --text-dim: #94a3b8;
+  --border: #2a3050;
+  --code-bg: #0f1219;
+  --xdp-color: #22d3ee;
+  --gen-color: #f472b6;
+  --egress-color: #a78bfa;
+  --kernel-color: #34d399;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Noto Sans KR', 'IBM Plex Sans', sans-serif;
+  line-height: 1.8;
+  overflow-x: hidden;
+}
+
+.noise {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  pointer-events: none; z-index: 9999; opacity: 0.03;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+header {
+  padding: 60px 40px 40px;
+  max-width: 1300px;
+  margin: 0 auto;
+  border-bottom: 1px solid var(--border);
+}
+
+header .tag {
+  display: inline-block;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: rgba(34,211,238,0.08);
+  padding: 4px 12px;
+  border-radius: 3px;
+  margin-bottom: 16px;
+}
+
+header h1 {
+  font-size: clamp(26px, 4vw, 44px);
+  font-weight: 700;
+  line-height: 1.2;
+  margin-bottom: 12px;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+header .subtitle {
+  font-size: 16px;
+  color: var(--text-dim);
+  max-width: 750px;
+  font-weight: 300;
+}
+
+.container {
+  max-width: 1300px;
+  margin: 0 auto;
+  padding: 40px;
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 40px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0;
+  overflow-x: auto;
+}
+
+.tab {
+  padding: 12px 24px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  background: transparent;
+  color: var(--text-dim);
+  border: none;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.tab:hover { color: var(--text); }
+.tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.section { display: none; animation: fadeIn 0.3s ease; }
+.section.active { display: block; }
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+h2 {
+  font-size: 24px;
+  font-weight: 600;
+  margin-bottom: 20px;
+  color: var(--text);
+}
+
+h3 {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 28px 0 12px;
+  color: var(--accent2);
+}
+
+p { margin-bottom: 16px; color: var(--text-dim); font-size: 15px; }
+p strong { color: var(--text); font-weight: 500; }
+
+.diagram-box {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 32px;
+  margin: 24px 0;
+  overflow-x: auto;
+}
+
+.diagram-box .title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--accent);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin-bottom: 20px;
+}
+
+svg text { font-family: 'JetBrains Mono', monospace; }
+
+.code-block {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 20px 24px;
+  margin: 16px 0;
+  overflow-x: auto;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  line-height: 1.8;
+  color: #cbd5e1;
+}
+
+.code-block .comment { color: #6b7280; }
+.code-block .keyword { color: var(--accent3); }
+.code-block .type { color: var(--accent); }
+.code-block .func { color: var(--accent4); }
+.code-block .string { color: #fbbf24; }
+.code-block .macro { color: var(--accent2); }
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  margin: 24px 0;
+}
+
+.card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 24px;
+  transition: border-color 0.2s;
+}
+
+.card:hover { border-color: var(--accent); }
+
+.card .card-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.card h4 {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.card p { font-size: 13px; margin-bottom: 0; }
+
+.label-xdp { color: var(--xdp-color); }
+.label-gen { color: var(--gen-color); }
+.label-egress { color: var(--egress-color); }
+.label-kernel { color: var(--kernel-color); }
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 16px 0;
+  font-size: 14px;
+}
+
+.data-table th {
+  text-align: left;
+  padding: 10px 16px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--accent);
+  border-bottom: 1px solid var(--border);
+  letter-spacing: 0.5px;
+}
+
+.data-table td {
+  padding: 10px 16px;
+  border-bottom: 1px solid rgba(42,48,80,0.5);
+  color: var(--text-dim);
+}
+
+.data-table td code {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  background: var(--bg3);
+  padding: 2px 6px;
+  border-radius: 3px;
+  color: var(--accent4);
+}
+
+.flow-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin: 12px 0;
+  padding: 16px;
+  background: var(--bg2);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 6px 6px 0;
+}
+
+.flow-step .step-num {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+  min-width: 28px;
+}
+
+.flow-step .step-text {
+  font-size: 14px;
+  color: var(--text-dim);
+}
+
+.flow-step .step-text code {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--accent4);
+  background: var(--bg3);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+.note-box {
+  background: rgba(244,114,182,0.06);
+  border: 1px solid rgba(244,114,182,0.2);
+  border-radius: 6px;
+  padding: 16px 20px;
+  margin: 20px 0;
+  font-size: 14px;
+  color: var(--text-dim);
+}
+
+.note-box strong { color: var(--accent3); }
+</style>
+</head>
+<body>
+<div class="noise"></div>
+
+<header>
+  <div class="tag">NSDI '25 — eTran 논문 분석</div>
+  <h1>XDP_GEN 심층 구조 분석</h1>
+  <p class="subtitle">eTran 시스템의 XDP_GEN eBPF hook에 대한 내부 아키텍처를 논문 기술 내용과 Linux 커널 XDP 인프라를 기반으로 역공학 분석한 결과입니다.</p>
+</header>
+
+<div class="container">
+  <div class="tabs">
+    <button class="tab active" onclick="showTab('overview')">개요</button>
+    <button class="tab" onclick="showTab('architecture')">아키텍처 UML</button>
+    <button class="tab" onclick="showTab('kernel')">커널 Hook 구현</button>
+    <button class="tab" onclick="showTab('lifecycle')">실행 생명주기</button>
+    <button class="tab" onclick="showTab('datastructs')">데이터 구조</button>
+    <button class="tab" onclick="showTab('bpfprog')">eBPF 프로그램 측</button>
+  </div>
+
+  <!-- 개요 -->
+  <div class="section active" id="overview">
+    <h2>XDP_GEN이란?</h2>
+    <p><strong>XDP_GEN</strong>은 eTran이 도입한 새로운 eBPF hook으로, eBPF 프로그램이 <strong>커널 내부에서 패킷을 생성</strong>할 수 있게 합니다 — 구체적으로 전송 프로토콜을 위한 ACK 및 credit 패킷을 생성합니다. 표준 XDP는 수신(ingress) 패킷만 처리하므로, XDP_GEN은 user-space 개입 없이 커널 측 패킷 생성이라는 공백을 채웁니다.</p>
+
+    <div class="card-grid">
+      <div class="card">
+        <div class="card-label label-gen">해결하는 문제</div>
+        <h4>이슈 ②: XDP에서 패킷 생성 불가</h4>
+        <p>전송 프로토콜은 송신자와 수신자를 조율하기 위해 ACK/credit 패킷을 생성해야 하지만, 표준 XDP hook에는 커널 내부에서 새로운 패킷을 생성하는 메커니즘이 없습니다.</p>
+      </div>
+      <div class="card">
+        <div class="card-label label-xdp">배치 위치</div>
+        <h4><code>xdp_do_flush()</code> 내부</h4>
+        <p>XDP_GEN은 각 NAPI poll 주기가 끝날 때 호출되는 <code>xdp_do_flush()</code>(논문에서는 <code>dev_xdp_flush()</code>로 지칭) 함수 내부에 배치됩니다.</p>
+      </div>
+      <div class="card">
+        <div class="card-label label-kernel">컨텍스트</div>
+        <h4>XDP와 동일: <code>struct xdp_md</code></h4>
+        <p>XDP_GEN에 연결된 프로그램은 표준 XDP와 동일한 패킷 컨텍스트를 사용하여, 기존 eBPF helper 및 인프라의 재사용이 가능합니다.</p>
+      </div>
+      <div class="card">
+        <div class="card-label label-egress">반환 액션</div>
+        <h4>XDP_TX / XDP_DROP / XDP_ABORTED</h4>
+        <p>XDP_TX는 패킷을 전송합니다. XDP_DROP은 폐기합니다. XDP_ABORTED는 생성 루프를 종료합니다 — 이번 주기에서 더 이상 패킷이 생성되지 않습니다.</p>
+      </div>
+    </div>
+
+    <h3>핵심 설계 결정 (논문 §3.2.1)</h3>
+    <p>필요 시 동적으로 패킷 프레임을 할당하는 방식(커널 메모리 관리의 복잡성으로 인해 느림) 대신, eTran은 <code>page_pool</code> 할당자를 통한 <strong>배치(batch) 사전 할당</strong>을 사용합니다. XDP_GEN 프로그램은 NAPI budget으로 제한된 유한 루프에서 실행됩니다. 각 반복(iteration)에서 사전 할당된 프레임 하나를 소비하여 패킷을 생성할 수 있습니다.</p>
+
+    <div class="note-box">
+      <strong>소스 코드 참고:</strong> eTran-linux 커널 저장소(github.com/eTran-NSDI25/eTran-linux)에 실제 구현 코드가 포함되어 있습니다. 그러나 해당 코드가 검색 엔진에 잘 색인되어 있지 않아 직접 접근이 어려웠습니다. 아래 분석은 논문의 상세 기술(§3.2.1, §4.1, §4.2, §5)을 eTran이 수정하는 표준 Linux v6.6 XDP/AF_XDP 코드베이스와 교차 참조하여 재구성한 것입니다. ★ 표시가 있는 구조체는 논문 기술 내용에서 추론한 것입니다.
+    </div>
+  </div>
+
+  <!-- 아키텍처 UML -->
+  <div class="section" id="architecture">
+    <h2>컴포넌트 아키텍처 (UML 스타일)</h2>
+    <p>아래 다이어그램은 eTran 커널 아키텍처 내에서 XDP_GEN의 위치와 다른 컴포넌트와의 관계를 보여줍니다.</p>
+
+    <div class="diagram-box">
+      <div class="title">컴포넌트 다이어그램 — eTran 커널 내 XDP_GEN</div>
+      <svg viewBox="0 0 960 720" width="100%" style="max-width:960px;">
+        <!-- 배경 영역 -->
+        <rect x="20" y="10" width="920" height="320" rx="8" fill="rgba(34,211,238,0.04)" stroke="var(--border)" stroke-dasharray="6,4"/>
+        <text x="40" y="35" font-size="11" fill="#22d3ee" letter-spacing="1.5">커널 공간 (NAPI 컨텍스트)</text>
+
+        <rect x="20" y="350" width="920" height="140" rx="8" fill="rgba(167,139,250,0.04)" stroke="var(--border)" stroke-dasharray="6,4"/>
+        <text x="40" y="375" font-size="11" fill="#a78bfa" letter-spacing="1.5">유저 공간</text>
+
+        <rect x="20" y="510" width="920" height="190" rx="8" fill="rgba(244,114,182,0.04)" stroke="var(--border)" stroke-dasharray="6,4"/>
+        <text x="40" y="535" font-size="11" fill="#f472b6" letter-spacing="1.5">커널 — eBPF 인프라</text>
+
+        <!-- XDP Hook -->
+        <rect x="60" y="60" width="180" height="80" rx="6" fill="#1a2332" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="150" y="90" font-size="13" fill="#22d3ee" text-anchor="middle" font-weight="600">XDP Hook</text>
+        <text x="150" y="108" font-size="10" fill="#94a3b8" text-anchor="middle">(수신 패킷 처리)</text>
+        <text x="150" y="124" font-size="9" fill="#64748b" text-anchor="middle">NIC 드라이버 RX 경로</text>
+
+        <!-- XDP_GEN Hook -->
+        <rect x="310" y="60" width="200" height="80" rx="6" fill="#1a2332" stroke="#f472b6" stroke-width="2"/>
+        <text x="410" y="90" font-size="13" fill="#f472b6" text-anchor="middle" font-weight="700">XDP_GEN Hook ★</text>
+        <text x="410" y="108" font-size="10" fill="#94a3b8" text-anchor="middle">(패킷 생성)</text>
+        <text x="410" y="124" font-size="9" fill="#64748b" text-anchor="middle">xdp_do_flush() 내부</text>
+
+        <!-- XDP_EGRESS Hook -->
+        <rect x="580" y="60" width="200" height="80" rx="6" fill="#1a2332" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="680" y="90" font-size="13" fill="#a78bfa" text-anchor="middle" font-weight="600">XDP_EGRESS Hook ★</text>
+        <text x="680" y="108" font-size="10" fill="#94a3b8" text-anchor="middle">(송신 패킷 처리)</text>
+        <text x="680" y="124" font-size="9" fill="#64748b" text-anchor="middle">xsk_tx_peek_desc() 내부</text>
+
+        <!-- per-CPU queue -->
+        <rect x="170" y="180" width="180" height="55" rx="4" fill="#1a2332" stroke="#fbbf24" stroke-width="1"/>
+        <text x="260" y="200" font-size="11" fill="#fbbf24" text-anchor="middle">per-CPU eBPF 큐</text>
+        <text x="260" y="218" font-size="9" fill="#94a3b8" text-anchor="middle">(ACK/credit 메타데이터)</text>
+
+        <!-- per-CPU xdp_frame pool -->
+        <rect x="400" y="180" width="180" height="55" rx="4" fill="#1a2332" stroke="#34d399" stroke-width="1"/>
+        <text x="490" y="200" font-size="11" fill="#34d399" text-anchor="middle">per-CPU xdp_frame 풀</text>
+        <text x="490" y="218" font-size="9" fill="#94a3b8" text-anchor="middle">(page_pool 사전 할당)</text>
+
+        <!-- PKT_QUEUE -->
+        <rect x="620" y="180" width="180" height="55" rx="4" fill="#1a2332" stroke="#f472b6" stroke-width="1"/>
+        <text x="710" y="200" font-size="11" fill="#f472b6" text-anchor="middle">PKT_QUEUE Map ★</text>
+        <text x="710" y="218" font-size="9" fill="#94a3b8" text-anchor="middle">(페이싱 엔진)</text>
+
+        <!-- NIC -->
+        <rect x="360" y="270" width="240" height="50" rx="4" fill="#1a2332" stroke="#64748b"/>
+        <text x="480" y="300" font-size="12" fill="#e2e8f0" text-anchor="middle">NIC (mlx5 드라이버)</text>
+
+        <!-- AF_XDP sockets -->
+        <rect x="100" y="390" width="160" height="55" rx="4" fill="#1a2332" stroke="#a78bfa"/>
+        <text x="180" y="412" font-size="11" fill="#a78bfa" text-anchor="middle">AF_XDP 소켓</text>
+        <text x="180" y="428" font-size="9" fill="#94a3b8" text-anchor="middle">(데이터 경로 IO)</text>
+
+        <rect x="320" y="390" width="160" height="55" rx="4" fill="#1a2332" stroke="#a78bfa"/>
+        <text x="400" y="412" font-size="11" fill="#a78bfa" text-anchor="middle">Control Path</text>
+        <text x="400" y="428" font-size="9" fill="#94a3b8" text-anchor="middle">(AF_XDP 데몬)</text>
+
+        <rect x="540" y="390" width="180" height="55" rx="4" fill="#1a2332" stroke="#a78bfa"/>
+        <text x="630" y="412" font-size="11" fill="#a78bfa" text-anchor="middle">유저 공간 라이브러리</text>
+        <text x="630" y="428" font-size="9" fill="#94a3b8" text-anchor="middle">(비신뢰, 상태 접근 불가)</text>
+
+        <!-- eBPF maps -->
+        <rect x="60" y="555" width="170" height="50" rx="4" fill="#1a2332" stroke="#f472b6"/>
+        <text x="145" y="575" font-size="11" fill="#f472b6" text-anchor="middle">연결 상태</text>
+        <text x="145" y="591" font-size="9" fill="#94a3b8" text-anchor="middle">eBPF Hashmap</text>
+
+        <rect x="260" y="555" width="170" height="50" rx="4" fill="#1a2332" stroke="#f472b6"/>
+        <text x="345" y="575" font-size="11" fill="#f472b6" text-anchor="middle">CC 상태</text>
+        <text x="345" y="591" font-size="9" fill="#94a3b8" text-anchor="middle">eBPF Array (mmapable)</text>
+
+        <rect x="460" y="555" width="170" height="50" rx="4" fill="#1a2332" stroke="#f472b6"/>
+        <text x="545" y="575" font-size="11" fill="#f472b6" text-anchor="middle">BPF Timer</text>
+        <text x="545" y="591" font-size="9" fill="#94a3b8" text-anchor="middle">비동기 콜백 트리거</text>
+
+        <rect x="660" y="555" width="170" height="50" rx="4" fill="#1a2332" stroke="#f472b6"/>
+        <text x="745" y="575" font-size="11" fill="#f472b6" text-anchor="middle">bpf_rbtree</text>
+        <text x="745" y="591" font-size="9" fill="#94a3b8" text-anchor="middle">(Homa credit 리스트)</text>
+
+        <!-- eBPF Verifier -->
+        <rect x="260" y="640" width="440" height="45" rx="4" fill="rgba(34,211,238,0.08)" stroke="#22d3ee" stroke-dasharray="4,3"/>
+        <text x="480" y="667" font-size="12" fill="#22d3ee" text-anchor="middle">eBPF Verifier — 모든 프로그램 검증 (eTran이 변경하지 않음)</text>
+
+        <!-- 화살표 -->
+        <line x1="150" y1="140" x2="220" y2="180" stroke="#fbbf24" stroke-width="1" marker-end="url(#arrow-y)"/>
+        <text x="160" y="165" font-size="8" fill="#fbbf24">bpf_map_push_elem()</text>
+
+        <line x1="310" y1="180" x2="370" y2="140" stroke="#fbbf24" stroke-width="1" marker-end="url(#arrow-p)"/>
+        <text x="310" y="155" font-size="8" fill="#fbbf24">bpf_map_pop_elem()</text>
+
+        <line x1="430" y1="140" x2="470" y2="180" stroke="#34d399" stroke-width="1" marker-end="url(#arrow-g)"/>
+        <text x="460" y="158" font-size="8" fill="#34d399">프레임 소비</text>
+
+        <line x1="410" y1="140" x2="450" y2="270" stroke="#f472b6" stroke-width="1.5" marker-end="url(#arrow-p)"/>
+        <text x="415" y="220" font-size="8" fill="#f472b6">XDP_TX → 전송</text>
+
+        <line x1="700" y1="140" x2="710" y2="180" stroke="#a78bfa" stroke-width="1" marker-end="url(#arrow-v)"/>
+
+        <line x1="420" y1="320" x2="220" y2="390" stroke="#94a3b8" stroke-width="1" stroke-dasharray="4,3"/>
+        <line x1="480" y1="320" x2="400" y2="390" stroke="#94a3b8" stroke-width="1" stroke-dasharray="4,3"/>
+
+        <defs>
+          <marker id="arrow-y" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#fbbf24"/></marker>
+          <marker id="arrow-p" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#f472b6"/></marker>
+          <marker id="arrow-g" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#34d399"/></marker>
+          <marker id="arrow-v" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#a78bfa"/></marker>
+        </defs>
+      </svg>
+    </div>
+
+    <h3>클래스 다이어그램 — XDP_GEN 관련 구조체</h3>
+    <div class="diagram-box">
+      <div class="title">UML 클래스 다이어그램 (논문 + Linux v6.6 기반 추론)</div>
+      <svg viewBox="0 0 960 540" width="100%" style="max-width:960px;">
+        <!-- xdp_md (context) -->
+        <rect x="50" y="20" width="240" height="170" rx="4" fill="#1a2332" stroke="#22d3ee" stroke-width="1.5"/>
+        <rect x="50" y="20" width="240" height="28" rx="4" fill="rgba(34,211,238,0.12)"/>
+        <text x="170" y="39" font-size="12" fill="#22d3ee" text-anchor="middle" font-weight="700">«struct» xdp_md</text>
+        <line x1="50" y1="48" x2="290" y2="48" stroke="var(--border)"/>
+        <text x="60" y="66" font-size="10" fill="#cbd5e1">+ data: __u32</text>
+        <text x="60" y="82" font-size="10" fill="#cbd5e1">+ data_end: __u32</text>
+        <text x="60" y="98" font-size="10" fill="#cbd5e1">+ data_meta: __u32</text>
+        <text x="60" y="114" font-size="10" fill="#cbd5e1">+ ingress_ifindex: __u32</text>
+        <text x="60" y="130" font-size="10" fill="#cbd5e1">+ rx_queue_index: __u32</text>
+        <text x="60" y="146" font-size="10" fill="#f472b6">+ umem_id: __u32  ★ (eTran 추가)</text>
+        <line x1="50" y1="156" x2="290" y2="156" stroke="var(--border)"/>
+        <text x="60" y="178" font-size="9" fill="#94a3b8">XDP, XDP_GEN, XDP_EGRESS 공유</text>
+
+        <!-- xdp_frame -->
+        <rect x="370" y="20" width="240" height="155" rx="4" fill="#1a2332" stroke="#34d399" stroke-width="1.5"/>
+        <rect x="370" y="20" width="240" height="28" rx="4" fill="rgba(52,211,153,0.12)"/>
+        <text x="490" y="39" font-size="12" fill="#34d399" text-anchor="middle" font-weight="700">«struct» xdp_frame</text>
+        <line x1="370" y1="48" x2="610" y2="48" stroke="var(--border)"/>
+        <text x="380" y="66" font-size="10" fill="#cbd5e1">+ data: void*</text>
+        <text x="380" y="82" font-size="10" fill="#cbd5e1">+ len: u16</text>
+        <text x="380" y="98" font-size="10" fill="#cbd5e1">+ headroom: u16</text>
+        <text x="380" y="114" font-size="10" fill="#cbd5e1">+ metasize: u32</text>
+        <text x="380" y="130" font-size="10" fill="#cbd5e1">+ frame_sz: u32</text>
+        <text x="380" y="146" font-size="10" fill="#f472b6">+ tx_timestamp: u64  ★</text>
+        <line x1="370" y1="156" x2="610" y2="156" stroke="var(--border)"/>
+
+        <!-- PKT_QUEUE map -->
+        <rect x="690" y="20" width="250" height="175" rx="4" fill="#1a2332" stroke="#f472b6" stroke-width="2"/>
+        <rect x="690" y="20" width="250" height="28" rx="4" fill="rgba(244,114,182,0.12)"/>
+        <text x="815" y="39" font-size="12" fill="#f472b6" text-anchor="middle" font-weight="700">«eBPF Map» PKT_QUEUE ★</text>
+        <line x1="690" y1="48" x2="940" y2="48" stroke="var(--border)"/>
+        <text x="700" y="66" font-size="10" fill="#cbd5e1">+ buckets[N]: pkt_bucket</text>
+        <text x="700" y="82" font-size="10" fill="#cbd5e1">+ type: BPF_MAP_TYPE_PKT_QUEUE</text>
+        <line x1="690" y1="92" x2="940" y2="92" stroke="var(--border)"/>
+        <text x="700" y="110" font-size="10" fill="#cbd5e1">+ enqueue(bucket_idx, xdp_frame*)</text>
+        <text x="700" y="126" font-size="10" fill="#cbd5e1">+ dequeue(bucket_idx): xdp_frame*</text>
+        <text x="700" y="142" font-size="10" fill="#cbd5e1">+ bpf_dynptr_from_xdp_frame()</text>
+        <text x="700" y="158" font-size="10" fill="#cbd5e1">+ dev_xdp_enqueue() [kfunc]</text>
+        <line x1="690" y1="168" x2="940" y2="168" stroke="var(--border)"/>
+        <text x="700" y="186" font-size="9" fill="#94a3b8">버킷 인덱스: tx_timestamp 또는 명시적 지정</text>
+
+        <!-- page_pool -->
+        <rect x="50" y="250" width="240" height="110" rx="4" fill="#1a2332" stroke="#fbbf24" stroke-width="1"/>
+        <rect x="50" y="250" width="240" height="28" rx="4" fill="rgba(251,191,36,0.1)"/>
+        <text x="170" y="269" font-size="12" fill="#fbbf24" text-anchor="middle" font-weight="700">page_pool 할당자</text>
+        <line x1="50" y1="278" x2="290" y2="278" stroke="var(--border)"/>
+        <text x="60" y="296" font-size="10" fill="#cbd5e1">xdp_frame 풀을 사전 할당</text>
+        <text x="60" y="312" font-size="10" fill="#cbd5e1">XDP_GEN용 per-CPU</text>
+        <text x="60" y="328" font-size="10" fill="#cbd5e1">XDP 고속 경로에 최적화</text>
+        <text x="60" y="344" font-size="10" fill="#94a3b8">기존 Linux 인프라 재사용</text>
+
+        <!-- per-CPU queue -->
+        <rect x="370" y="250" width="240" height="110" rx="4" fill="#1a2332" stroke="#fbbf24" stroke-width="1"/>
+        <rect x="370" y="250" width="240" height="28" rx="4" fill="rgba(251,191,36,0.1)"/>
+        <text x="490" y="269" font-size="12" fill="#fbbf24" text-anchor="middle" font-weight="700">per-CPU eBPF 큐</text>
+        <line x1="370" y1="278" x2="610" y2="278" stroke="var(--border)"/>
+        <text x="380" y="296" font-size="10" fill="#cbd5e1">+ push(ack_metadata)</text>
+        <text x="380" y="312" font-size="10" fill="#cbd5e1">+ pop(): ack_metadata</text>
+        <line x1="370" y1="322" x2="610" y2="322" stroke="var(--border)"/>
+        <text x="380" y="340" font-size="10" fill="#94a3b8">XDP가 push, XDP_GEN이 pop</text>
+
+        <!-- BPF timer -->
+        <rect x="690" y="250" width="250" height="110" rx="4" fill="#1a2332" stroke="#a78bfa" stroke-width="1"/>
+        <rect x="690" y="250" width="250" height="28" rx="4" fill="rgba(167,139,250,0.1)"/>
+        <text x="815" y="269" font-size="12" fill="#a78bfa" text-anchor="middle" font-weight="700">BPF Timer (확장) ★</text>
+        <line x1="690" y1="278" x2="940" y2="278" stroke="var(--border)"/>
+        <text x="700" y="296" font-size="10" fill="#cbd5e1">+ 모드 1: NETTX_SOFTIRQ (per-CPU)</text>
+        <text x="700" y="312" font-size="10" fill="#cbd5e1">+ 모드 2: kthread (전역)</text>
+        <line x1="690" y1="322" x2="940" y2="322" stroke="var(--border)"/>
+        <text x="700" y="340" font-size="10" fill="#94a3b8">페이싱 콜백을 비동기 트리거</text>
+
+        <!-- 관계 화살표 -->
+        <line x1="290" y1="90" x2="370" y2="90" stroke="#94a3b8" stroke-width="1" stroke-dasharray="4,3"/>
+        <text x="320" y="84" font-size="8" fill="#94a3b8">래핑</text>
+
+        <line x1="610" y1="90" x2="690" y2="90" stroke="#f472b6" stroke-width="1"/>
+        <text x="640" y="84" font-size="8" fill="#f472b6">저장됨</text>
+
+        <line x1="240" y1="250" x2="420" y2="175" stroke="#fbbf24" stroke-width="1" stroke-dasharray="4,3"/>
+        <text x="290" y="220" font-size="8" fill="#fbbf24">사전 할당</text>
+
+        <line x1="815" y1="195" x2="815" y2="250" stroke="#a78bfa" stroke-width="1" stroke-dasharray="4,3"/>
+        <text x="825" y="225" font-size="8" fill="#a78bfa">dequeue 트리거</text>
+
+        <!-- 범례 -->
+        <rect x="50" y="420" width="900" height="100" rx="6" fill="var(--bg2)" stroke="var(--border)"/>
+        <text x="70" y="445" font-size="11" fill="#94a3b8" font-weight="600">범례</text>
+        <rect x="70" y="458" width="12" height="12" fill="rgba(244,114,182,0.3)" stroke="#f472b6"/>
+        <text x="90" y="469" font-size="10" fill="#f472b6">★ eTran이 커널에 새로 추가한 부분</text>
+        <rect x="340" y="458" width="12" height="12" fill="rgba(34,211,238,0.3)" stroke="#22d3ee"/>
+        <text x="360" y="469" font-size="10" fill="#22d3ee">기존 Linux XDP 인프라 (재사용)</text>
+        <rect x="600" y="458" width="12" height="12" fill="rgba(251,191,36,0.3)" stroke="#fbbf24"/>
+        <text x="620" y="469" font-size="10" fill="#fbbf24">데이터 흐름 / 중간 매개</text>
+        <rect x="800" y="458" width="12" height="12" fill="rgba(167,139,250,0.3)" stroke="#a78bfa"/>
+        <text x="820" y="469" font-size="10" fill="#a78bfa">기존 메커니즘 확장</text>
+        <line x1="70" y1="490" x2="160" y2="490" stroke="#94a3b8" stroke-dasharray="4,3"/>
+        <text x="170" y="494" font-size="10" fill="#94a3b8">점선 = 논리적/간접적 관계</text>
+        <line x1="420" y1="490" x2="510" y2="490" stroke="#94a3b8"/>
+        <text x="520" y="494" font-size="10" fill="#94a3b8">실선 = 직접 데이터/제어 흐름</text>
+      </svg>
+    </div>
+  </div>
+
+  <!-- 커널 Hook 구현 -->
+  <div class="section" id="kernel">
+    <h2>커널 측 Hook 구현 (재구성)</h2>
+    <p>논문에서 XDP_GEN이 <code>xdp_do_flush()</code> 내부에 배치되고, 사전 할당된 <code>xdp_frame</code> 풀과 NAPI-budget 제한 루프를 사용한다는 기술을 바탕으로 재구성한 커널 구현 구조입니다.</p>
+
+    <h3>1. Hook 배치 위치: <code>xdp_do_flush()</code> 내부</h3>
+    <p>표준 Linux v6.6 커널에서 <code>xdp_do_flush()</code>(<code>net/core/filter.c</code>)는 보류 중인 XDP redirect 작업을 flush합니다. eTran은 이 함수를 확장하여 flush 후 XDP_GEN을 호출합니다.</p>
+
+    <div class="code-block">
+<span class="comment">/* net/core/filter.c (eTran 수정) — 논문 §3.2.1에서 재구성 */</span>
+
+<span class="keyword">void</span> <span class="func">xdp_do_flush</span>(<span class="keyword">void</span>)
+{
+    <span class="comment">/* 기존 flush 로직: devmap, cpumap, xskmap 벌크 큐 flush */</span>
+    <span class="func">__dev_flush</span>();
+    <span class="func">__cpu_map_flush</span>();
+    <span class="func">__xsk_map_flush</span>();
+
+    <span class="comment">/* ★ eTran 추가: 수신 flush 후 XDP_GEN 프로그램 실행 */</span>
+    <span class="func">dev_xdp_gen_run</span>();    <span class="comment">/* eTran이 추가한 새 함수 */</span>
+}
+    </div>
+
+    <h3>2. XDP_GEN 핵심 실행 루프</h3>
+    <p>논문에 따르면 XDP_GEN은 "NAPI와 동일한 budget의 유한 루프"에서 실행되며 "<code>page_pool</code>에서 사전 할당된 프레임"을 사용합니다. 루프는 <code>XDP_ABORTED</code> 또는 budget 소진 시 종료됩니다.</p>
+
+    <div class="code-block">
+<span class="comment">/* ★ 논문 §3.2.1에서 재구성 — dev_xdp_gen_run() */</span>
+
+<span class="keyword">static void</span> <span class="func">dev_xdp_gen_run</span>(<span class="keyword">void</span>)
+{
+    <span class="type">struct</span> bpf_prog *prog = <span class="func">rcu_dereference</span>(xdp_gen_prog);
+    <span class="type">struct</span> xdp_frame *frames;     <span class="comment">/* per-CPU 사전 할당 풀 */</span>
+    <span class="type">struct</span> xdp_buff xdp_buf;
+    <span class="keyword">int</span> budget = NAPI_POLL_WEIGHT; <span class="comment">/* 일반적으로 64 */</span>
+    <span class="keyword">int</span> i, act;
+
+    <span class="keyword">if</span> (!prog)
+        <span class="keyword">return</span>;
+
+    <span class="comment">/* page_pool에서 프레임 사전 할당 (배치 분할 상각) */</span>
+    frames = <span class="func">page_pool_alloc_batch</span>(per_cpu_pool, budget);
+
+    <span class="keyword">for</span> (i = 0; i < budget; i++) {
+        <span class="comment">/* 사전 할당된 프레임으로 xdp_buff 초기화 */</span>
+        <span class="func">xdp_init_buff_from_frame</span>(&xdp_buf, &frames[i]);
+
+        <span class="comment">/* XDP_GEN에 연결된 eBPF 프로그램 실행 */</span>
+        act = <span class="func">bpf_prog_run_xdp</span>(prog, &xdp_buf);
+
+        <span class="keyword">switch</span> (act) {
+        <span class="keyword">case</span> XDP_TX:
+            <span class="comment">/* 생성된 ACK/credit 패킷 전송 */</span>
+            <span class="func">dev_xdp_enqueue</span>(&xdp_buf);   <span class="comment">/* kfunc으로 래핑됨 */</span>
+            <span class="keyword">break</span>;
+        <span class="keyword">case</span> XDP_DROP:
+            <span class="comment">/* 이 프레임 폐기, page_pool로 재활용 */</span>
+            <span class="func">page_pool_recycle</span>(&frames[i]);
+            <span class="keyword">break</span>;
+        <span class="keyword">case</span> XDP_ABORTED:
+            <span class="comment">/* 더 이상 생성할 패킷 없음 — 루프 종료 */</span>
+            <span class="func">page_pool_recycle_remaining</span>(frames, i, budget);
+            <span class="keyword">goto</span> flush;
+        }
+    }
+
+flush:
+    <span class="comment">/* 생성된 모든 패킷을 NIC으로 flush */</span>
+    <span class="func">dev_xdp_flush</span>();
+}
+    </div>
+
+    <h3>3. Verifier 등록</h3>
+    <p>논문 §5에 따르면: "eTran은 verifier를 변경하지 않고 새로운 eBPF hook과 kfunc만 verifier에 등록합니다." XDP_GEN은 추가 attach type과 함께 XDP 프로그램 타입을 재사용합니다.</p>
+
+    <div class="code-block">
+<span class="comment">/* kernel/bpf/verifier.c — 등록 (논문 §5에서 재구성) */</span>
+
+<span class="comment">/* XDP_GEN은 XDP와 동일한 컨텍스트 접근 검사를 사용 */</span>
+<span class="comment">/* verifier 검사 항목:</span>
+<span class="comment"> *   (a) 프로그램 동작: 유한 루프, NULL 포인터 검사, 교착 상태 없음</span>
+<span class="comment"> *   (b) 컨텍스트 접근: XDP와 동일 (struct xdp_md)</span>
+<span class="comment"> *   (c) Helper/kfunc 사용: XDP helper의 부분 집합</span>
+<span class="comment"> *       - 제외: bpf_redirect_map (임의 리다이렉트 방지)</span>
+<span class="comment"> *       - 제외: bpf_sk_lookup_tcp (소켓 접근 불필요)</span>
+<span class="comment"> *       - 포함: bpf_map_push/pop_elem, bpf_map_lookup_elem</span>
+<span class="comment"> */</span>
+    </div>
+
+    <h3>4. 노출된 Helper (보안 경계)</h3>
+    <table class="data-table">
+      <thead>
+        <tr><th>Helper / kfunc</th><th>XDP</th><th>XDP_GEN</th><th>이유</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>bpf_map_lookup_elem</code></td><td>✓</td><td>✓</td><td>전송 상태 조회</td></tr>
+        <tr><td><code>bpf_map_push_elem</code></td><td>✓</td><td>✓</td><td>메타데이터 인큐</td></tr>
+        <tr><td><code>bpf_map_pop_elem</code></td><td>✓</td><td>✓</td><td>ACK 메타데이터 디큐</td></tr>
+        <tr><td><code>bpf_xdp_adjust_head</code></td><td>✓</td><td>✓</td><td>패킷 헤더 조작</td></tr>
+        <tr><td><code>bpf_fib_lookup</code></td><td>✓</td><td>✓</td><td>헤더용 라우트 조회</td></tr>
+        <tr><td><code>bpf_redirect_map</code></td><td>✓</td><td style="color:#f472b6">✗</td><td>임의 리다이렉트 방지</td></tr>
+        <tr><td><code>bpf_sk_lookup_tcp</code></td><td>✓</td><td style="color:#f472b6">✗</td><td>소켓 접근 불필요</td></tr>
+        <tr><td><code>dev_xdp_enqueue</code> (kfunc)</td><td>✗</td><td>✓</td><td>생성된 패킷 전송</td></tr>
+        <tr><td><code>bpf_dynptr_from_xdp_frame</code></td><td>✗</td><td>✓</td><td>안전한 xdp_frame 접근</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 실행 생명주기 -->
+  <div class="section" id="lifecycle">
+    <h2>XDP_GEN 실행 생명주기</h2>
+    <p>이 섹션은 단일 NAPI poll 주기 동안 패킷 도착부터 ACK/credit 전송까지 XDP_GEN 실행의 전체 생명주기를 추적합니다.</p>
+
+    <h3>시퀀스: TCP ACK 생성</h3>
+    <div class="flow-step" style="border-left-color: #22d3ee;">
+      <div class="step-num" style="color:#22d3ee">01</div>
+      <div class="step-text"><strong>NAPI poll 시작.</strong> NIC 드라이버(mlx5)가 수신 데이터 패킷을 받습니다. 드라이버의 RX 루프에서 각 패킷에 대해 XDP eBPF 프로그램이 호출됩니다.</div>
+    </div>
+    <div class="flow-step" style="border-left-color: #22d3ee;">
+      <div class="step-num" style="color:#22d3ee">02</div>
+      <div class="step-text"><strong>XDP 프로그램이 데이터 패킷 처리.</strong> 4-tuple을 사용하여 eBPF hashmap에서 TCP 연결 상태를 조회합니다. <code>ack</code>/<code>seq</code> 값을 검증합니다. 유효하면 TCP 윈도우 상태를 갱신합니다.</div>
+    </div>
+    <div class="flow-step" style="border-left-color: #fbbf24;">
+      <div class="step-num" style="color:#fbbf24">03</div>
+      <div class="step-text"><strong>XDP가 ACK 메타데이터를 push.</strong> ACK를 보내야 하는 경우, XDP는 <code>bpf_map_push_elem()</code>을 호출하여 메타데이터(seq, ack 번호, 연결 ID)를 <strong>per-CPU eBPF 큐</strong>에 push합니다.</div>
+    </div>
+    <div class="flow-step" style="border-left-color: #22d3ee;">
+      <div class="step-num" style="color:#22d3ee">04</div>
+      <div class="step-text"><strong>XDP가 데이터를 AF_XDP로 리다이렉트.</strong> 데이터 패킷은 AF_XDP 소켓을 통해 user-space로 리다이렉트됩니다(<code>XDP_REDIRECT</code>). budget이 소진될 때까지 더 많은 패킷을 계속 처리합니다.</div>
+    </div>
+    <div class="flow-step" style="border-left-color: #94a3b8;">
+      <div class="step-num" style="color:#94a3b8">05</div>
+      <div class="step-text"><strong><code>xdp_do_flush()</code> 호출.</strong> NAPI poll 종료. 기존 flush 로직 실행(devmap, cpumap, xskmap). 그 후 eTran의 XDP_GEN hook이 트리거됩니다.</div>
+    </div>
+    <div class="flow-step" style="border-left-color: #f472b6;">
+      <div class="step-num" style="color:#f472b6">06</div>
+      <div class="step-text"><strong>XDP_GEN 루프 시작.</strong> <code>page_pool</code>에서 사전 할당된 <code>xdp_frame</code> 풀이 사용 가능합니다. NAPI budget(64)까지 루프가 반복됩니다.</div>
+    </div>
+    <div class="flow-step" style="border-left-color: #f472b6;">
+      <div class="step-num" style="color:#f472b6">07</div>
+      <div class="step-text"><strong>XDP_GEN이 메타데이터 pop.</strong> per-CPU 큐에서 <code>bpf_map_pop_elem()</code>을 호출합니다. 비어 있으면 → <code>XDP_ABORTED</code>를 반환하여 루프를 종료합니다.</div>
+    </div>
+    <div class="flow-step" style="border-left-color: #f472b6;">
+      <div class="step-num" style="color:#f472b6">08</div>
+      <div class="step-text"><strong>XDP_GEN이 패킷 프레임 채움.</strong> pop한 메타데이터를 사용하여 사전 할당된 <code>xdp_frame</code>에 ACK 패킷 헤더(Ethernet, IP, TCP)를 구성합니다. <code>XDP_TX</code>를 반환합니다.</div>
+    </div>
+    <div class="flow-step" style="border-left-color: #34d399;">
+      <div class="step-num" style="color:#34d399">09</div>
+      <div class="step-text"><strong>커널이 ACK 전송.</strong> <code>XDP_TX</code> 액션이 <code>dev_xdp_enqueue()</code>를 통해 생성된 ACK 패킷을 NIC 전송 큐로 보냅니다.</div>
+    </div>
+    <div class="flow-step" style="border-left-color: #34d399;">
+      <div class="step-num" style="color:#34d399">10</div>
+      <div class="step-text"><strong>루프 반복 또는 종료.</strong> 큐에 대기 중인 각 ACK에 대해 07–09 단계가 반복됩니다. <code>XDP_ABORTED</code> 또는 budget 소진 시, 나머지 프레임은 재활용되고 <code>dev_xdp_flush()</code>가 완료됩니다.</div>
+    </div>
+
+    <div class="note-box">
+      <strong>핵심 성능 인사이트:</strong> ACK 병합(coalescing)이 자연스럽게 발생합니다 — 하나의 NAPI poll에서 처리된 여러 데이터 패킷이 여러 ACK 메타데이터 항목을 생성하고, XDP_GEN이 이를 마지막에 ACK 패킷으로 배치 처리합니다. 이는 Google Falcon, TAS, Caladan, eRPC의 병합 메커니즘과 유사합니다.
+    </div>
+
+    <h3>시퀀스: Homa Credit 생성</h3>
+    <p>Homa의 경우 흐름은 유사하지만 XDP_GEN 프로그램이 더 복잡합니다:</p>
+    <div class="flow-step" style="border-left-color: #f472b6;">
+      <div class="step-num" style="color:#f472b6">H1</div>
+      <div class="step-text"><strong>XDP_GEN이 credit 리스트에서 RPC 선택.</strong> <code>bpf_rbtree_lower_bound()</code>를 사용하여 우선순위(남은 바이트)별로 후보 RPC를 찾습니다. peer당 최대 1개의 RPC만 선택되도록 보장합니다.</div>
+    </div>
+    <div class="flow-step" style="border-left-color: #f472b6;">
+      <div class="step-num" style="color:#f472b6">H2</div>
+      <div class="step-text"><strong>RPC 상태 조회.</strong> eBPF hashmap에서 RPC 상태를 쿼리하고, 남은 바이트와 우선순위에 따라 credit을 할당합니다.</div>
+    </div>
+    <div class="flow-step" style="border-left-color: #f472b6;">
+      <div class="step-num" style="color:#f472b6">H3</div>
+      <div class="step-text"><strong>완료된 RPC 제거.</strong> credit 리스트(<code>bpf_rbtree</code>)에서 완료된 RPC를 정리합니다.</div>
+    </div>
+    <div class="flow-step" style="border-left-color: #f472b6;">
+      <div class="step-num" style="color:#f472b6">H4</div>
+      <div class="step-text"><strong>credit 패킷 전송.</strong> 사전 할당된 프레임에 credit 패킷 데이터를 채우고 <code>XDP_TX</code>를 반환합니다. 복잡한 로직을 여러 프로그램으로 분할하기 위해 <code>bpf_tail_call</code>을 사용하여 verifier의 명령어 수 제한을 만족시킵니다.</div>
+    </div>
+  </div>
+
+  <!-- 데이터 구조 -->
+  <div class="section" id="datastructs">
+    <h2>데이터 구조 상세</h2>
+
+    <h3>per-CPU ACK 메타데이터 큐</h3>
+    <p>XDP(수신)와 XDP_GEN(패킷 생성) 사이의 다리 역할. XDP가 push하고, XDP_GEN이 pop합니다.</p>
+    <div class="code-block">
+<span class="comment">/* eBPF 프로그램 측 — ACK 메타데이터용 per-CPU 큐 */</span>
+<span class="comment">/* 새로운 타입이 아닌 표준 eBPF map 사용 */</span>
+
+<span class="keyword">struct</span> {
+    __uint(type, <span class="macro">BPF_MAP_TYPE_QUEUE</span>);  <span class="comment">/* 또는 PERCPU 변형 */</span>
+    __uint(max_entries, 256);
+    __type(value, <span class="keyword">struct</span> ack_meta);
+} <span class="func">ack_queue</span> SEC(<span class="string">".maps"</span>);
+
+<span class="comment">/* TCP ACK 메타데이터 구조체 (★ 전송 프로토콜별 정의) */</span>
+<span class="keyword">struct</span> ack_meta {
+    __u32 saddr, daddr;
+    __u16 sport, dport;
+    __u32 seq;
+    __u32 ack_seq;
+    __u16 window;
+    <span class="comment">/* 전송 프로토콜에 따라 추가 필드 가능 */</span>
+};
+
+<span class="comment">/* XDP 프로그램 내 (수신 경로): */</span>
+<span class="func">bpf_map_push_elem</span>(&ack_queue, &meta, <span class="macro">BPF_EXIST</span>);
+
+<span class="comment">/* XDP_GEN 프로그램 내 (패킷 생성): */</span>
+<span class="keyword">int</span> ret = <span class="func">bpf_map_pop_elem</span>(&ack_queue, &meta);
+<span class="keyword">if</span> (ret < 0)
+    <span class="keyword">return</span> <span class="macro">XDP_ABORTED</span>;  <span class="comment">/* 큐 비어 있음, 생성 중단 */</span>
+    </div>
+
+    <h3>PKT_QUEUE (BPF_MAP_TYPE_PKT_QUEUE) ★</h3>
+    <p>페이싱을 위한 새로운 eBPF map 타입. <code>xdp_frame</code> 포인터를 저장하는 슬롯이 있는 버킷들을 포함합니다.</p>
+    <div class="code-block">
+<span class="comment">/* ★ eTran이 추가한 새 eBPF map 타입 (kernel/bpf/) */</span>
+<span class="comment">/* 논문 §3.2.2에서 재구성 */</span>
+
+<span class="keyword">struct</span> pkt_queue_bucket {
+    <span class="type">struct</span> xdp_frame *slots[BUCKET_SIZE];
+    <span class="keyword">int</span> head, tail;
+    <span class="comment">/* 타이밍 휠용: 시간 슬롯에 매핑 */</span>
+    <span class="comment">/* credit 기반용: RPC ID에 매핑 */</span>
+};
+
+<span class="keyword">struct</span> bpf_map_pkt_queue {
+    <span class="type">struct</span> bpf_map map;       <span class="comment">/* 기본 eBPF map */</span>
+    <span class="type">struct</span> pkt_queue_bucket *buckets;
+    __u32 nr_buckets;
+    <span class="comment">/* 타이밍 휠 상태 (속도 기반 페이싱용) */</span>
+    __u64 current_tick;
+    __u64 tick_interval_ns;
+};
+
+<span class="comment">/* 페이싱 메커니즘에 따른 사용 방식: */</span>
+<span class="comment">/*</span>
+<span class="comment"> * 속도 기반 (TCP/DCTCP): bucket_idx = tx_timestamp / tick_interval</span>
+<span class="comment"> *   → Carousel 스타일 타이밍 휠 구현</span>
+<span class="comment"> *</span>
+<span class="comment"> * Credit 기반 (Homa): bucket_idx = RPC_ID</span>
+<span class="comment"> *   → RPC별 패킷 큐잉, credit 보충 시 디큐</span>
+<span class="comment"> */</span>
+    </div>
+
+    <h3>확장된 xdp_md 컨텍스트</h3>
+    <div class="code-block">
+<span class="comment">/* include/uapi/linux/bpf.h — eTran 확장 */</span>
+
+<span class="keyword">struct</span> xdp_md {
+    __u32 data;
+    __u32 data_end;
+    __u32 data_meta;
+    __u32 ingress_ifindex;
+    __u32 rx_queue_index;
+    __u32 egress_ifindex;   <span class="comment">/* v6.6 기존 필드 */</span>
+
+    <span class="comment">/* ★ eTran 추가: UMEM 소유권 식별 */</span>
+    <span class="type">__u32</span> <span class="func">umem_id</span>;   <span class="comment">/* XDP_EGRESS용: 패킷이 해당 앱에 속하는지 검증 */</span>
+                     <span class="comment">/* XDP (수신)용: 무효/접근 불가 */</span>
+                     <span class="comment">/* XDP_GEN용: 해당 없음 (커널 생성 프레임) */</span>
+};
+    </div>
+  </div>
+
+  <!-- eBPF 프로그램 측 -->
+  <div class="section" id="bpfprog">
+    <h2>eBPF 프로그램 측 (전송 프로토콜 개발자 관점)</h2>
+    <p>XDP_GEN 프로그램 구현 시 전송 프로토콜 개발자가 작성하는 내용을 보여줍니다. §4에서 기술된 TCP 및 Homa 구현을 기반으로 합니다.</p>
+
+    <h3>TCP ACK 생성기 (XDP_GEN 프로그램)</h3>
+    <div class="code-block">
+<span class="macro">SEC</span>(<span class="string">"xdp_gen"</span>)
+<span class="keyword">int</span> <span class="func">tcp_ack_gen</span>(<span class="type">struct</span> xdp_md *ctx)
+{
+    <span class="type">struct</span> ack_meta meta;
+    <span class="keyword">int</span> ret;
+
+    <span class="comment">/* 단계 1: per-CPU 큐에서 ACK 메타데이터 pop */</span>
+    ret = <span class="func">bpf_map_pop_elem</span>(&ack_queue, &meta);
+    <span class="keyword">if</span> (ret < 0)
+        <span class="keyword">return</span> <span class="macro">XDP_ABORTED</span>;  <span class="comment">/* 더 이상 보낼 ACK 없음 */</span>
+
+    <span class="comment">/* 단계 2: 사전 할당된 패킷 프레임 접근 */</span>
+    <span class="keyword">void</span> *data = (<span class="keyword">void</span> *)(<span class="keyword">long</span>)ctx->data;
+    <span class="keyword">void</span> *data_end = (<span class="keyword">void</span> *)(<span class="keyword">long</span>)ctx->data_end;
+
+    <span class="comment">/* 단계 3: Ethernet 헤더 구성 */</span>
+    <span class="type">struct</span> ethhdr *eth = data;
+    <span class="keyword">if</span> ((<span class="keyword">void</span> *)(eth + 1) > data_end)
+        <span class="keyword">return</span> <span class="macro">XDP_DROP</span>;
+    <span class="comment">/* bpf_fib_lookup 또는 캐시된 결과로 MAC 주소 채움 */</span>
+
+    <span class="comment">/* 단계 4: IP 헤더 구성 */</span>
+    <span class="type">struct</span> iphdr *ip = (<span class="keyword">void</span> *)(eth + 1);
+    <span class="keyword">if</span> ((<span class="keyword">void</span> *)(ip + 1) > data_end)
+        <span class="keyword">return</span> <span class="macro">XDP_DROP</span>;
+    ip->saddr = meta.saddr;
+    ip->daddr = meta.daddr;
+    ip->protocol = <span class="macro">IPPROTO_TCP</span>;
+    ip->tot_len = <span class="func">bpf_htons</span>(<span class="keyword">sizeof</span>(*ip) + <span class="keyword">sizeof</span>(<span class="type">struct</span> tcphdr));
+    <span class="comment">/* ... 나머지 IP 필드 채움 ... */</span>
+
+    <span class="comment">/* 단계 5: TCP ACK 헤더 구성 */</span>
+    <span class="type">struct</span> tcphdr *tcp = (<span class="keyword">void</span> *)(ip + 1);
+    <span class="keyword">if</span> ((<span class="keyword">void</span> *)(tcp + 1) > data_end)
+        <span class="keyword">return</span> <span class="macro">XDP_DROP</span>;
+    tcp->source = meta.sport;
+    tcp->dest   = meta.dport;
+    tcp->seq    = <span class="func">bpf_htonl</span>(meta.seq);
+    tcp->ack_seq = <span class="func">bpf_htonl</span>(meta.ack_seq);
+    tcp->ack = 1;
+    tcp->window = <span class="func">bpf_htons</span>(meta.window);
+    <span class="comment">/* ... 체크섬 계산 ... */</span>
+
+    <span class="comment">/* 단계 6: ACK 패킷 전송 */</span>
+    <span class="keyword">return</span> <span class="macro">XDP_TX</span>;
+}
+    </div>
+
+    <h3>Homa Credit 생성기 (XDP_GEN 프로그램, tail call 사용)</h3>
+    <div class="code-block">
+<span class="comment">/* Homa는 복잡한 로직을 분할하기 위해 bpf_tail_call 사용 (논문 §4.2) */</span>
+<span class="comment">/* 상태는 .bss 섹션의 per-CPU 변수를 통해 전달 */</span>
+
+<span class="keyword">struct</span> {
+    __uint(type, <span class="macro">BPF_MAP_TYPE_PROG_ARRAY</span>);
+    __uint(max_entries, 4);
+    __type(key, __u32);
+    __type(value, __u32);
+} <span class="func">gen_progs</span> SEC(<span class="string">".maps"</span>);
+
+<span class="comment">/* tail call 프로그램 간 상태 전달용 per-CPU 상태 */</span>
+<span class="keyword">struct</span> gen_state {
+    __u64 last_min_bytes;
+    __u32 last_peerid;
+    __u32 credits_allocated;
+} gen_ctx SEC(<span class="string">".bss"</span>);
+
+<span class="macro">SEC</span>(<span class="string">"xdp_gen"</span>)
+<span class="keyword">int</span> <span class="func">homa_credit_gen_phase1</span>(<span class="type">struct</span> xdp_md *ctx)
+{
+    <span class="comment">/* 1단계: bpf_rbtree credit 리스트에서 후보 RPC 선택 */</span>
+    <span class="comment">/* bpf_rbtree_lower_bound()로 우선순위별 RPC 탐색 */</span>
+    <span class="comment">/* peer당 최대 1개 RPC 보장 (2-level rbtree 에뮬레이션) */</span>
+    <span class="comment">/* 선택 결과를 gen_ctx (.bss per-CPU)에 저장 */</span>
+
+    <span class="func">bpf_tail_call</span>(ctx, &gen_progs, 1);  <span class="comment">/* → 2단계로 */</span>
+    <span class="keyword">return</span> <span class="macro">XDP_ABORTED</span>;
+}
+
+<span class="macro">SEC</span>(<span class="string">"xdp_gen/phase2"</span>)
+<span class="keyword">int</span> <span class="func">homa_credit_gen_phase2</span>(<span class="type">struct</span> xdp_md *ctx)
+{
+    <span class="comment">/* 2단계: RPC 상태 조회, credit 할당 */</span>
+    <span class="comment">/* 3단계: 완료된 RPC를 credit 리스트에서 제거 */</span>
+
+    <span class="func">bpf_tail_call</span>(ctx, &gen_progs, 2);  <span class="comment">/* → 3단계로 */</span>
+    <span class="keyword">return</span> <span class="macro">XDP_ABORTED</span>;
+}
+
+<span class="macro">SEC</span>(<span class="string">"xdp_gen/phase3"</span>)
+<span class="keyword">int</span> <span class="func">homa_credit_gen_phase3</span>(<span class="type">struct</span> xdp_md *ctx)
+{
+    <span class="comment">/* 4단계: 선택된 RPC에 대한 credit 패킷 구성 및 전송 */</span>
+    <span class="comment">/* Ethernet/IP/Homa 헤더 채움 */</span>
+    <span class="comment">/* 전송 시 XDP_TX, 완료 시 XDP_ABORTED 반환 */</span>
+    <span class="keyword">return</span> <span class="macro">XDP_TX</span>;
+}
+    </div>
+
+    <h3>전송 프로토콜 개발자 API (논문 Appendix C, Listing 1)</h3>
+    <table class="data-table">
+      <thead>
+        <tr><th>API (XDP_GEN 컨텍스트)</th><th>용도</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>bpf_dequeue_ack(map)</code></td><td>큐에서 ACK 메타데이터 pop (XDP_GEN에서 호출)</td></tr>
+        <tr><td><code>bpf_dequeue_candidate(root, less)</code></td><td>rbtree credit 리스트에서 후보 RPC 선택</td></tr>
+        <tr><td><code>bpf_fetch_pkt(map, key)</code></td><td>PKT_QUEUE에서 대기 중인 패킷 가져오기</td></tr>
+        <tr><td><code>bpf_send_pkt(map, ifindex, flags)</code></td><td>NIC 큐를 통해 패킷 전송</td></tr>
+        <tr><td><code>bpf_flush_pkt()</code></td><td>전송 보류 중인 모든 패킷 flush</td></tr>
+      </tbody>
+    </table>
+
+    <div class="note-box">
+      <strong>코드 규모 (Table 1 기준):</strong> TCP eBPF 프로그램 = 2,173 LoC; Homa eBPF 프로그램 = 5,349 LoC. Homa가 상당히 더 큰 이유는 복잡한 수신자 주도 credit 스케줄링을 tail call과 단일 rbtree 에뮬레이션을 사용하여 eBPF 제약 조건 내에서 구현해야 하기 때문입니다.
+    </div>
+  </div>
+</div>
+
+<script>
+function showTab(id) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  event.target.classList.add('active');
+}
+</script>
+</body>
+</html>
