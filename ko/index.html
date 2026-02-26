@@ -290,6 +290,110 @@ svg text { font-family: 'JetBrains Mono', monospace; }
 }
 
 .note-box strong { color: var(--accent3); }
+
+
+/* 스캔라인 애니메이션 */
+.btn::before {
+    content: '';
+    position: absolute;
+    top: -100%;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(transparent, rgba(255,255,255,0.04), transparent);
+    transition: top 0.4s ease;
+}
+
+.btn:hover::before {
+    top: 100%;
+}
+
+/* ── 버튼 1: 시안 테마 ── */
+.btn-1 {
+    background: linear-gradient(135deg, #0d1f35 0%, #0a1628 100%);
+    border: 1px solid rgba(0, 212, 255, 0.3);
+    color: #a8e6f0;
+    box-shadow:
+        0 0 0 1px rgba(0, 212, 255, 0.05),
+        0 8px 32px rgba(0, 0, 0, 0.4),
+        inset 0 1px 0 rgba(0, 212, 255, 0.1);
+}
+
+.btn-1:hover {
+    border-color: rgba(0, 212, 255, 0.7);
+    box-shadow:
+        0 0 20px rgba(0, 212, 255, 0.15),
+        0 0 60px rgba(0, 212, 255, 0.05),
+        0 12px 40px rgba(0, 0, 0, 0.5),
+        inset 0 1px 0 rgba(0, 212, 255, 0.2);
+    transform: translateY(-2px);
+}
+
+.btn-1 .btn-icon {
+    background: rgba(0, 212, 255, 0.1);
+    border: 1px solid rgba(0, 212, 255, 0.2);
+    color: var(--accent1);
+}
+
+.btn-1 .btn-name {
+    color: #e0f7fc;
+}
+
+/* ── 버튼 2: 퍼플 테마 ── */
+.btn-2 {
+    background: linear-gradient(135deg, #1a0f2e 0%, #130c22 100%);
+    border: 1px solid rgba(124, 58, 237, 0.3);
+    color: #c4b5fd;
+    box-shadow:
+        0 0 0 1px rgba(124, 58, 237, 0.05),
+        0 8px 32px rgba(0, 0, 0, 0.4),
+        inset 0 1px 0 rgba(124, 58, 237, 0.1);
+}
+
+.btn-2:hover {
+    border-color: rgba(124, 58, 237, 0.7);
+    box-shadow:
+        0 0 20px rgba(124, 58, 237, 0.2),
+        0 0 60px rgba(124, 58, 237, 0.07),
+        0 12px 40px rgba(0, 0, 0, 0.5),
+        inset 0 1px 0 rgba(124, 58, 237, 0.2);
+    transform: translateY(-2px);
+}
+
+.btn-2 .btn-icon {
+    background: rgba(124, 58, 237, 0.1);
+    border: 1px solid rgba(124, 58, 237, 0.2);
+    color: #a78bfa;
+}
+
+.btn-2 .btn-name {
+    color: #ede9fe;
+}
+
+/* 구분선 */
+.divider {
+    width: 380px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.divider::before,
+.divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+}
+
+.divider span {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 2px;
+}
+
+  
 </style>
 </head>
 <body>
@@ -347,8 +451,32 @@ svg text { font-family: 'JetBrains Mono', monospace; }
     <p>sk_buff가 IP 및 TCP 계층을 통해 전파될 때 상태 머신은 시퀀스 번호를 평가하고 ACK가 필요한지 결정한다. 필요한 경우 커널은 새 sk_buff를 할당하고, 이더넷, IP, TCP 헤더를 채우며, 라우팅 메트릭을 위해 FIB (Forwarding Information Base)를 쿼리하고, 큐 규율(qdisc)을 통해 버퍼를 NIC 드라이버로 밀어 넣는다. 이러한 동기식 할당 및 라우팅 오버헤드는 커널 네트워크에서 지연 시간의 주요 원인이 된다.</p>
 
     <h3>추가 분석</h3>
-        <button onclick="location.href='ack_credit_detail.html'">sk_buff 상세</button>
-        <button onclick="location.href='sk_buff.html'">ACK, credit 상세</button>
+        
+<div class="container">
+
+    <!-- 버튼 1: sk_buff 상세 -->
+    <button class="btn btn-1" onclick="location.href='ack_credit_detail.html'">
+        <div class="btn-icon">⬡</div>
+        <div class="btn-text">
+            <div class="btn-label">Kernel Buffer</div>
+            <div class="btn-name">sk_buff 상세</div>
+        </div>
+        <span class="btn-arrow">→</span>
+    </button>
+
+    <div class="divider"><span>OR</span></div>
+
+    <!-- 버튼 2: ACK, credit 상세 -->
+    <button class="btn btn-2" onclick="location.href='sk_buff.html'">
+        <div class="btn-icon">⬡</div>
+        <div class="btn-text">
+            <div class="btn-label">Flow Control</div>
+            <div class="btn-name">ACK, credit 상세</div>
+        </div>
+        <span class="btn-arrow">→</span>
+    </button>
+
+</div>
 
     <div class="note-box">
       <strong>소스 코드 참고:</strong> eTran-linux 커널 저장소(github.com/eTran-NSDI25/eTran-linux)에 실제 구현 코드가 포함되어 있습니다. 그러나 해당 코드가 검색 엔진에 잘 색인되어 있지 않아 직접 접근이 어려웠습니다. 아래 분석은 논문의 상세 기술(§3.2.1, §4.1, §4.2, §5)을 eTran이 수정하는 표준 Linux v6.6 XDP/AF_XDP 코드베이스와 교차 참조하여 재구성한 것입니다. ★ 표시가 있는 구조체는 논문 기술 내용에서 추론한 것입니다.
