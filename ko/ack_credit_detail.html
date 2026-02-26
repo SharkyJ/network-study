@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>XDP_GEN — ACK 및 Credit 패킷 쉬운 설명</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+KR:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0f1117;
+  --bg2: #161922;
+  --bg3: #1e2231;
+  --accent: #38bdf8;
+  --accent2: #a78bfa;
+  --accent3: #fb923c;
+  --accent4: #34d399;
+  --pink: #f472b6;
+  --text: #e2e8f0;
+  --text-dim: #94a3b8;
+  --border: #2a3050;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Noto Sans KR', sans-serif;
+  line-height: 1.85;
+}
+.wrap { max-width: 900px; margin: 0 auto; padding: 50px 32px 80px; }
+
+header { margin-bottom: 48px; }
+header .badge {
+  display: inline-block;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px; letter-spacing: 1.5px;
+  color: var(--accent); background: rgba(56,189,248,0.1);
+  padding: 4px 12px; border-radius: 4px; margin-bottom: 14px;
+}
+header h1 {
+  font-size: 32px; font-weight: 700; line-height: 1.3; margin-bottom: 10px;
+}
+header .sub { font-size: 15px; color: var(--text-dim); }
+
+/* Section */
+.section { margin-bottom: 56px; }
+.section h2 {
+  font-size: 22px; font-weight: 700; margin-bottom: 18px;
+  padding-bottom: 10px; border-bottom: 1px solid var(--border);
+}
+.section h3 {
+  font-size: 17px; font-weight: 600; color: var(--accent2);
+  margin: 28px 0 10px;
+}
+p { font-size: 15px; color: var(--text-dim); margin-bottom: 14px; }
+p strong, p b { color: var(--text); font-weight: 600; }
+
+/* Analogy box */
+.analogy {
+  background: linear-gradient(135deg, rgba(56,189,248,0.06), rgba(167,139,250,0.06));
+  border: 1px solid rgba(56,189,248,0.2);
+  border-radius: 10px;
+  padding: 22px 26px;
+  margin: 20px 0;
+}
+.analogy .icon { font-size: 22px; margin-bottom: 8px; }
+.analogy .title { font-weight: 600; color: var(--accent); font-size: 14px; margin-bottom: 6px; }
+.analogy p { font-size: 14px; margin-bottom: 0; }
+
+/* Diagram */
+.diagram {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 28px;
+  margin: 20px 0;
+  overflow-x: auto;
+}
+.diagram .label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px; color: var(--accent); letter-spacing: 1px;
+  margin-bottom: 16px;
+}
+
+/* Comparison cards */
+.compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin: 20px 0;
+}
+@media (max-width: 640px) { .compare { grid-template-columns: 1fr; } }
+.compare .card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 24px;
+}
+.compare .card .tag {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px; letter-spacing: 1px; margin-bottom: 10px;
+}
+.compare .card h4 { font-size: 17px; font-weight: 600; margin-bottom: 8px; }
+.compare .card p { font-size: 13px; margin-bottom: 0; }
+
+/* Step flow */
+.steps { margin: 16px 0; }
+.step {
+  display: flex; gap: 16px; align-items: flex-start;
+  padding: 14px 18px; margin: 8px 0;
+  background: var(--bg2);
+  border-radius: 8px;
+  border-left: 3px solid var(--accent);
+}
+.step.pink { border-left-color: var(--pink); }
+.step.orange { border-left-color: var(--accent3); }
+.step.green { border-left-color: var(--accent4); }
+.step .num {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px; font-weight: 700; min-width: 24px;
+  color: var(--accent);
+}
+.step.pink .num { color: var(--pink); }
+.step.orange .num { color: var(--accent3); }
+.step.green .num { color: var(--accent4); }
+.step .body { font-size: 14px; color: var(--text-dim); }
+.step .body strong { color: var(--text); }
+.step .body code {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px; background: var(--bg3); padding: 1px 5px;
+  border-radius: 3px; color: var(--accent4);
+}
+
+/* Key point */
+.key-point {
+  background: rgba(251,146,60,0.07);
+  border: 1px solid rgba(251,146,60,0.2);
+  border-radius: 8px;
+  padding: 16px 20px;
+  margin: 18px 0;
+  font-size: 14px; color: var(--text-dim);
+}
+.key-point strong { color: var(--accent3); }
+
+/* Table */
+.tbl { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px; }
+.tbl th {
+  text-align: left; padding: 10px 14px;
+  font-size: 12px; color: var(--accent);
+  border-bottom: 1px solid var(--border);
+  font-family: 'JetBrains Mono', monospace;
+}
+.tbl td { padding: 10px 14px; border-bottom: 1px solid rgba(42,48,80,0.4); color: var(--text-dim); }
+.tbl td code {
+  font-family: 'JetBrains Mono', monospace; font-size: 12px;
+  background: var(--bg3); padding: 1px 5px; border-radius: 3px; color: var(--accent4);
+}
+
+/* Packet anatomy */
+.pkt-anatomy {
+  display: flex; gap: 0; margin: 16px 0; border-radius: 8px; overflow: hidden;
+  font-family: 'JetBrains Mono', monospace; font-size: 12px;
+}
+.pkt-anatomy .field {
+  padding: 12px 14px; text-align: center; border-right: 1px solid rgba(0,0,0,0.3);
+  display: flex; flex-direction: column; gap: 4px;
+}
+.pkt-anatomy .field:last-child { border-right: none; }
+.pkt-anatomy .field .fname { font-weight: 600; font-size: 11px; }
+.pkt-anatomy .field .fval { font-size: 10px; opacity: 0.7; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="badge">eTran / XDP_GEN 교육 자료</div>
+  <h1>ACK 패킷과 Credit 패킷<br>— 쉬운 설명</h1>
+  <p class="sub">XDP_GEN이 커널 내부에서 생성하는 두 종류의 패킷이 무엇이고, 왜 필요한지, 어떻게 동작하는지를 비유와 함께 설명합니다.</p>
+</header>
+
+<!-- ============================================ -->
+<!-- 1. 왜 이 패킷들이 필요한가? -->
+<!-- ============================================ -->
+<div class="section">
+  <h2>1. 먼저 — 왜 "응답 패킷"이 필요한가?</h2>
+
+  <p>네트워크에서 데이터를 보내는 것은 <b>일방통행 도로</b>가 아닙니다. 보낸 쪽은 반드시 "받는 쪽이 잘 받았는지"를 알아야 합니다. 그렇지 않으면 데이터가 중간에 사라져도 아무도 모릅니다.</p>
+
+  <div class="analogy">
+    <div class="icon">📬</div>
+    <div class="title">비유: 등기 우편</div>
+    <p>일반 우편은 보내고 잊으면 끝이지만, <b>등기 우편</b>은 수취인이 "받았습니다"라는 <b>수취 확인서</b>에 서명하고, 이것이 보낸 사람에게 돌아옵니다. 이 수취 확인서가 바로 네트워크에서의 <b>ACK 패킷</b>입니다. 그리고 수취인이 "다음 우편은 3통까지만 보내주세요"라고 요청서를 보내는 것이 <b>Credit 패킷</b>입니다.</p>
+  </div>
+
+  <p>전송 프로토콜은 크게 두 가지 종류의 "응답 패킷"을 사용합니다:</p>
+
+  <div class="compare">
+    <div class="card">
+      <div class="tag" style="color: var(--accent);">ACK 패킷</div>
+      <h4>📨 "잘 받았어요"</h4>
+      <p>수신자가 송신자에게 "당신이 보낸 데이터 패킷을 정상적으로 받았습니다"라고 알려주는 확인 패킷입니다. TCP 같은 <b>송신자 주도(Sender-driven)</b> 프로토콜에서 주로 사용됩니다.</p>
+    </div>
+    <div class="card">
+      <div class="tag" style="color: var(--pink);">Credit 패킷</div>
+      <h4>🎟️ "이만큼 보내도 됩니다"</h4>
+      <p>수신자가 송신자에게 "앞으로 이만큼의 데이터를 보내도 좋습니다"라는 <b>허가증</b>을 발급하는 패킷입니다. Homa 같은 <b>수신자 주도(Receiver-driven)</b> 프로토콜에서 사용됩니다.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================ -->
+<!-- 2. ACK 패킷 상세 -->
+<!-- ============================================ -->
+<div class="section">
+  <h2>2. ACK 패킷 — 상세 설명</h2>
+
+  <h3>2.1 ACK가 하는 일</h3>
+  <p>TCP 통신에서 ACK(Acknowledgment) 패킷은 <b>3가지 핵심 기능</b>을 수행합니다:</p>
+
+  <table class="tbl">
+    <thead><tr><th>기능</th><th>설명</th><th>비유</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><b>수신 확인</b></td>
+        <td>수신자가 "seq 번호 X까지의 데이터를 정상적으로 받았습니다"라고 송신자에게 알립니다.</td>
+        <td>📋 택배 수취 확인 서명</td>
+      </tr>
+      <tr>
+        <td><b>손실 감지</b></td>
+        <td>같은 ack 번호가 3번 연속 도착하면(3 Duplicate ACK), 송신자는 "그 패킷이 분실되었구나"라고 판단하고 재전송합니다.</td>
+        <td>🔁 "아직 안 왔어요"를 3번 반복하면 다시 보내기</td>
+      </tr>
+      <tr>
+        <td><b>흐름 제어</b></td>
+        <td>ACK에 포함된 <code>window</code> 값으로 "나는 현재 이만큼의 버퍼 여유가 있습니다"를 알려, 송신자가 과도하게 보내지 않도록 합니다.</td>
+        <td>🪣 "내 양동이에 빈 공간이 100L 남았어요"</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>2.2 ACK 패킷의 실제 구조</h3>
+  <p>XDP_GEN이 생성하는 TCP ACK 패킷은 아래와 같은 계층 구조를 가집니다:</p>
+
+  <div class="pkt-anatomy">
+    <div class="field" style="background: #1e3a5f; flex: 1.2;">
+      <span class="fname">Ethernet 헤더</span>
+      <span class="fval">14 bytes</span>
+      <span class="fval">src/dst MAC</span>
+    </div>
+    <div class="field" style="background: #1e4d3a; flex: 1.5;">
+      <span class="fname">IP 헤더</span>
+      <span class="fval">20 bytes</span>
+      <span class="fval">src/dst IP</span>
+    </div>
+    <div class="field" style="background: #4d1e3a; flex: 2;">
+      <span class="fname">TCP 헤더</span>
+      <span class="fval">20 bytes</span>
+      <span class="fval">seq, ack_seq, window, ACK 플래그</span>
+    </div>
+    <div class="field" style="background: #3a3a1e; flex: 0.8;">
+      <span class="fname">페이로드</span>
+      <span class="fval">0 bytes</span>
+      <span class="fval">ACK는 데이터 없음</span>
+    </div>
+  </div>
+
+  <div class="key-point">
+    <strong>핵심 포인트:</strong> ACK 패킷은 <b>데이터를 담지 않는 매우 작은 패킷</b>입니다 (약 54 bytes). 하지만 이 작은 패킷이 없으면 TCP 통신 전체가 작동하지 않습니다. 이 작은 패킷의 생성 속도가 전체 전송 성능에 직접적인 영향을 미칩니다.
+  </div>
+
+  <h3>2.3 기존 방식 vs. XDP_GEN 방식</h3>
+
+  <div class="compare">
+    <div class="card">
+      <div class="tag" style="color: var(--text-dim);">❌ 기존 Linux TCP 방식</div>
+      <h4>느린 경로</h4>
+      <p>데이터 패킷 수신 → <code>sk_buff</code> 할당 → TCP 스택 전체 통과 → 소켓 계층 → ACK 생성 → IP 계층 → 드라이버로 전송. 수많은 커널 함수와 락(lock)을 거치므로 느립니다.</p>
+    </div>
+    <div class="card">
+      <div class="tag" style="color: var(--accent4);">✅ eTran XDP_GEN 방식</div>
+      <h4>빠른 경로</h4>
+      <p>데이터 패킷 수신(XDP) → 메타데이터만 큐에 push → NAPI 끝에서 XDP_GEN이 메타데이터 pop → 사전 할당된 프레임에 헤더 직접 구성 → NIC으로 바로 전송. <code>sk_buff</code> 없이 최소 경로로 처리됩니다.</p>
+    </div>
+  </div>
+
+  <h3>2.4 XDP_GEN의 TCP ACK 생성 흐름</h3>
+
+  <div class="diagram">
+    <div class="label">TCP ACK 생성 과정 (한 NAPI poll 주기 내)</div>
+    <svg viewBox="0 0 800 400" width="100%" style="max-width:800px;">
+      <!-- Timeline -->
+      <line x1="60" y1="50" x2="60" y2="370" stroke="#334155" stroke-width="2"/>
+
+      <!-- Step 1: Packet arrives -->
+      <circle cx="60" cy="70" r="6" fill="#38bdf8"/>
+      <text x="80" y="68" font-size="12" fill="#38bdf8" font-weight="600" font-family="Noto Sans KR">① 데이터 패킷 도착</text>
+      <text x="80" y="86" font-size="11" fill="#94a3b8" font-family="Noto Sans KR">NIC → XDP hook에서 eBPF 프로그램 실행</text>
+
+      <rect x="320" y="55" width="280" height="40" rx="6" fill="#1e3a5f" stroke="#38bdf8" stroke-width="0.5"/>
+      <text x="340" y="72" font-size="10" fill="#38bdf8" font-family="JetBrains Mono">DATA [seq=1000, len=1460]</text>
+      <text x="340" y="86" font-size="9" fill="#64748b" font-family="Noto Sans KR">송신자 → 수신자</text>
+      <line x1="280" y1="75" x2="318" y2="75" stroke="#38bdf8" stroke-width="1" marker-end="url(#ar-b)"/>
+
+      <!-- Step 2: State update -->
+      <circle cx="60" cy="130" r="6" fill="#a78bfa"/>
+      <text x="80" y="128" font-size="12" fill="#a78bfa" font-weight="600" font-family="Noto Sans KR">② 전송 상태 갱신</text>
+      <text x="80" y="146" font-size="11" fill="#94a3b8" font-family="Noto Sans KR">eBPF hashmap에서 연결 상태 조회 → ack, seq 검증</text>
+      <text x="80" y="162" font-size="11" fill="#94a3b8" font-family="Noto Sans KR">TCP 윈도우 갱신, 수신 확인 번호 업데이트</text>
+
+      <!-- Step 3: Push metadata -->
+      <circle cx="60" cy="200" r="6" fill="#fb923c"/>
+      <text x="80" y="198" font-size="12" fill="#fb923c" font-weight="600" font-family="Noto Sans KR">③ ACK 메타데이터를 큐에 push</text>
+      <text x="80" y="216" font-size="11" fill="#94a3b8" font-family="JetBrains Mono">bpf_map_push_elem(&ack_queue, &meta)</text>
+
+      <rect x="420" y="190" width="200" height="35" rx="4" fill="#3a2a1e" stroke="#fb923c" stroke-width="0.5"/>
+      <text x="435" y="208" font-size="9" fill="#fb923c" font-family="JetBrains Mono">{ack_seq=2460, win=65535}</text>
+      <text x="435" y="220" font-size="8" fill="#64748b" font-family="Noto Sans KR">per-CPU 큐에 저장</text>
+
+      <!-- Step 4: NAPI ends, XDP_GEN starts -->
+      <circle cx="60" cy="270" r="6" fill="#f472b6"/>
+      <text x="80" y="268" font-size="12" fill="#f472b6" font-weight="600" font-family="Noto Sans KR">④ NAPI 종료 → XDP_GEN 실행</text>
+      <text x="80" y="286" font-size="11" fill="#94a3b8" font-family="JetBrains Mono">bpf_map_pop_elem(&ack_queue, &meta)</text>
+      <text x="80" y="302" font-size="11" fill="#94a3b8" font-family="Noto Sans KR">메타데이터 pop → 사전 할당 프레임에 헤더 구성</text>
+
+      <!-- Step 5: ACK sent -->
+      <circle cx="60" cy="350" r="6" fill="#34d399"/>
+      <text x="80" y="348" font-size="12" fill="#34d399" font-weight="600" font-family="Noto Sans KR">⑤ ACK 패킷 전송</text>
+      <text x="80" y="366" font-size="11" fill="#94a3b8" font-family="Noto Sans KR">XDP_TX 반환 → NIC을 통해 송신자에게 전송</text>
+
+      <rect x="320" y="335" width="280" height="40" rx="6" fill="#1e3a2a" stroke="#34d399" stroke-width="0.5"/>
+      <text x="340" y="352" font-size="10" fill="#34d399" font-family="JetBrains Mono">ACK [ack_seq=2460, win=65535]</text>
+      <text x="340" y="366" font-size="9" fill="#64748b" font-family="Noto Sans KR">수신자 → 송신자 (역방향)</text>
+      <line x1="600" y1="355" x2="740" y2="355" stroke="#34d399" stroke-width="1" marker-end="url(#ar-g)"/>
+
+      <defs>
+        <marker id="ar-b" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#38bdf8"/></marker>
+        <marker id="ar-g" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#34d399"/></marker>
+      </defs>
+    </svg>
+  </div>
+
+  <div class="key-point">
+    <strong>ACK 병합(Coalescing) 효과:</strong> 하나의 NAPI poll에서 여러 데이터 패킷을 수신하면, 각각에 대한 ACK 메타데이터가 큐에 쌓입니다. XDP_GEN은 이를 한꺼번에 처리하므로, 개별 ACK를 보내는 것보다 효율적입니다. 예를 들어 10개의 데이터 패킷을 받았다면, 마지막 ack_seq 값 하나만 ACK로 보내도 10개 모두를 확인할 수 있습니다.
+  </div>
+</div>
+
+<!-- ============================================ -->
+<!-- 3. Credit 패킷 상세 -->
+<!-- ============================================ -->
+<div class="section">
+  <h2>3. Credit 패킷 — 상세 설명</h2>
+
+  <h3>3.1 Credit이 하는 일</h3>
+
+  <div class="analogy">
+    <div class="icon">🎫</div>
+    <div class="title">비유: 놀이공원 식권</div>
+    <p>놀이공원에서 밥을 먹으려면 먼저 <b>식권(Credit)</b>을 받아야 합니다. 식권 없이는 음식을 주문할 수 없습니다. 식당(수신자)이 현재 처리 가능한 양만큼만 식권을 발급하므로, 손님(송신자)이 한꺼번에 몰려 음식이 넘치는(네트워크 혼잡) 상황을 방지합니다. 또한 식당은 <b>빨리 나갈 수 있는 간단한 메뉴(작은 RPC) 주문에 우선적으로 식권을 발급</b>하여 대기 시간을 최소화합니다. 이것이 바로 Homa의 SRPT(Shortest Remaining Processing Time) 정책입니다.</p>
+  </div>
+
+  <p>Credit 패킷은 <b>수신자 주도(Receiver-driven)</b> 전송 프로토콜인 Homa에서 핵심적인 역할을 합니다. ACK와는 근본적으로 목적이 다릅니다:</p>
+
+  <table class="tbl">
+    <thead><tr><th>구분</th><th>ACK 패킷</th><th>Credit 패킷</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><b>방향</b></td>
+        <td>수신자 → 송신자</td>
+        <td>수신자 → 송신자</td>
+      </tr>
+      <tr>
+        <td><b>의미</b></td>
+        <td>"보낸 데이터 <b>받았어요</b>"<br>(과거에 대한 확인)</td>
+        <td>"데이터를 <b>보내도 돼요</b>"<br>(미래에 대한 허가)</td>
+      </tr>
+      <tr>
+        <td><b>목적</b></td>
+        <td>신뢰성 보장 (손실 감지, 재전송)</td>
+        <td>혼잡 제어 (네트워크 과부하 방지)</td>
+      </tr>
+      <tr>
+        <td><b>타이밍</b></td>
+        <td>데이터를 받은 <b>후</b></td>
+        <td>데이터를 보내기 <b>전</b></td>
+      </tr>
+      <tr>
+        <td><b>사용 프로토콜</b></td>
+        <td>TCP (DCTCP), 송신자 주도</td>
+        <td>Homa, NDP 등 수신자 주도</td>
+      </tr>
+      <tr>
+        <td><b>포함 정보</b></td>
+        <td><code>ack_seq</code>, <code>window</code></td>
+        <td>RPC ID, 허용 바이트 수, 우선순위</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>3.2 Homa에서 Credit의 동작 방식</h3>
+
+  <p>Homa 프로토콜은 RPC(Remote Procedure Call) 단위로 통신합니다. 하나의 RPC 메시지는 여러 패킷으로 나뉘어 전송되는데, 이 과정이 Credit으로 조절됩니다:</p>
+
+  <div class="steps">
+    <div class="step">
+      <div class="num">①</div>
+      <div class="body"><strong>비예약(Unscheduled) 패킷 전송.</strong> 송신자는 Credit 없이도 RPC의 처음 몇 패킷을 보낼 수 있습니다 (비예약 패킷). 이것은 수신자가 해당 RPC의 존재를 알게 하기 위함입니다.</div>
+    </div>
+    <div class="step pink">
+      <div class="num">②</div>
+      <div class="body"><strong>수신자가 Credit 발급.</strong> 비예약 패킷을 받은 수신자는 남은 데이터량과 다른 RPC들의 상태를 고려하여 <b>Credit 패킷</b>을 보냅니다. "이 RPC에 대해 N 바이트까지 더 보내도 됩니다."</div>
+    </div>
+    <div class="step orange">
+      <div class="num">③</div>
+      <div class="body"><strong>SRPT 우선순위 적용.</strong> 여러 RPC가 경쟁할 때, 수신자는 <b>남은 바이트가 가장 적은 RPC</b>에 먼저 Credit을 발급합니다. 이렇게 하면 작은 RPC가 빨리 완료되어 평균 지연 시간이 줄어듭니다.</div>
+    </div>
+    <div class="step green">
+      <div class="num">④</div>
+      <div class="body"><strong>송신자가 Credit에 따라 전송.</strong> Credit을 받은 송신자는 허가된 양만큼만 데이터를 전송합니다. Credit이 없으면 패킷은 페이싱 엔진(<code>PKT_QUEUE</code>)에 대기합니다.</div>
+    </div>
+  </div>
+
+  <h3>3.3 Credit 패킷의 구조</h3>
+
+  <div class="pkt-anatomy">
+    <div class="field" style="background: #1e3a5f; flex: 1;">
+      <span class="fname">Ethernet</span>
+      <span class="fval">14 bytes</span>
+    </div>
+    <div class="field" style="background: #1e4d3a; flex: 1.2;">
+      <span class="fname">IP 헤더</span>
+      <span class="fval">20 bytes</span>
+    </div>
+    <div class="field" style="background: #4d1e4d; flex: 2.5;">
+      <span class="fname">Homa Credit 헤더</span>
+      <span class="fval">RPC ID, offset, priority</span>
+      <span class="fval">"RPC #42에 대해 offset 8000까지 전송 허용"</span>
+    </div>
+  </div>
+
+  <h3>3.4 XDP_GEN에서의 Credit 생성 흐름</h3>
+
+  <div class="diagram">
+    <div class="label">Homa Credit 생성 과정 (XDP_GEN 내부)</div>
+    <svg viewBox="0 0 800 360" width="100%" style="max-width:800px;">
+      <line x1="60" y1="40" x2="60" y2="340" stroke="#334155" stroke-width="2"/>
+
+      <circle cx="60" cy="55" r="6" fill="#38bdf8"/>
+      <text x="80" y="53" font-size="12" fill="#38bdf8" font-weight="600" font-family="Noto Sans KR">① XDP에서 비예약 패킷 수신</text>
+      <text x="80" y="71" font-size="11" fill="#94a3b8" font-family="Noto Sans KR">새 RPC 감지 → bpf_rbtree에 CC 상태 추가 (남은 바이트 기록)</text>
+
+      <circle cx="60" cy="115" r="6" fill="#f472b6"/>
+      <text x="80" y="113" font-size="12" fill="#f472b6" font-weight="600" font-family="Noto Sans KR">② XDP_GEN Phase 1 — RPC 선택</text>
+      <text x="80" y="131" font-size="11" fill="#94a3b8" font-family="Noto Sans KR">bpf_rbtree credit 리스트에서 우선순위 높은 RPC 선택</text>
+      <text x="80" y="147" font-size="11" fill="#94a3b8" font-family="Noto Sans KR">(남은 바이트 ↓ = 우선순위 ↑, peer당 1개만)</text>
+
+      <circle cx="60" cy="190" r="6" fill="#a78bfa"/>
+      <text x="80" y="188" font-size="12" fill="#a78bfa" font-weight="600" font-family="Noto Sans KR">③ XDP_GEN Phase 2 — Credit 할당</text>
+      <text x="80" y="206" font-size="11" fill="#94a3b8" font-family="Noto Sans KR">선택된 RPC 상태 조회 → 허용 바이트 수 결정</text>
+      <text x="80" y="222" font-size="11" fill="#94a3b8" font-family="Noto Sans KR">완료된 RPC는 credit 리스트에서 제거</text>
+
+      <circle cx="60" cy="270" r="6" fill="#34d399"/>
+      <text x="80" y="268" font-size="12" fill="#34d399" font-weight="600" font-family="Noto Sans KR">④ XDP_GEN Phase 3 — Credit 패킷 구성 및 전송</text>
+      <text x="80" y="286" font-size="11" fill="#94a3b8" font-family="Noto Sans KR">Ethernet/IP/Homa 헤더를 사전 할당 프레임에 채움</text>
+      <text x="80" y="302" font-size="11" fill="#94a3b8" font-family="JetBrains Mono">return XDP_TX;  // NIC으로 직접 전송</text>
+
+      <circle cx="60" cy="330" r="6" fill="#fb923c"/>
+      <text x="80" y="333" font-size="11" fill="#fb923c" font-family="Noto Sans KR">※ 각 Phase는 bpf_tail_call로 분리 (eBPF verifier 명령어 제한 우회)</text>
+    </svg>
+  </div>
+
+  <div class="key-point">
+    <strong>왜 Credit 생성이 더 복잡한가?</strong> TCP ACK는 단순히 "받았다"는 확인이지만, Homa Credit은 <b>스케줄링 결정</b>을 내려야 합니다. "여러 RPC 중 어떤 것에 먼저 Credit을 줄 것인가?" — 이것이 <code>bpf_rbtree</code>를 사용한 SRPT 우선순위 결정이며, eBPF 코드가 5,349줄로 TCP(2,173줄)보다 2.5배 더 큰 이유입니다.
+  </div>
+</div>
+
+<!-- ============================================ -->
+<!-- 4. 왜 커널 내부에서 생성해야 하는가? -->
+<!-- ============================================ -->
+<div class="section">
+  <h2>4. 왜 커널 내부(XDP_GEN)에서 생성해야 하는가?</h2>
+
+  <p>ACK와 Credit 패킷을 user-space에서 생성할 수도 있습니다. 그런데 eTran은 왜 굳이 커널 내부에서 이를 처리할까요?</p>
+
+  <h3>4.1 성능: 커널-유저 전환 비용 제거</h3>
+  <div class="steps">
+    <div class="step">
+      <div class="num">❌</div>
+      <div class="body"><strong>User-space 방식:</strong> 데이터 패킷 수신 → 커널→유저 전환 → 유저에서 ACK 생성 → 유저→커널 전환 → NIC 전송. 매 패킷마다 <b>최소 2번의 컨텍스트 스위치</b>가 발생합니다.</div>
+    </div>
+    <div class="step green">
+      <div class="num">✅</div>
+      <div class="body"><strong>XDP_GEN 방식:</strong> 데이터 패킷 수신(XDP) → 같은 NAPI 컨텍스트에서 ACK 생성(XDP_GEN) → NIC 전송. <b>컨텍스트 스위치 없이</b> 커널 내에서 모든 것이 완료됩니다.</div>
+    </div>
+  </div>
+
+  <h3>4.2 보호(Protection): 전송 상태 보호</h3>
+  <p>ACK와 Credit은 전송 프로토콜의 <b>핵심 제어 메커니즘</b>입니다. 만약 악의적인 애플리케이션이 가짜 ACK를 보내거나 Credit을 조작하면, 전체 네트워크 통신이 망가질 수 있습니다.</p>
+
+  <div class="compare">
+    <div class="card">
+      <div class="tag" style="color: #ef4444;">위험 시나리오</div>
+      <h4>가짜 ACK 공격</h4>
+      <p>악의적 앱이 실제로 받지 않은 데이터에 대해 ACK를 보내면, 송신자는 데이터가 전달된 것으로 착각합니다. 결과적으로 데이터가 영구적으로 손실됩니다.</p>
+    </div>
+    <div class="card">
+      <div class="tag" style="color: #ef4444;">위험 시나리오</div>
+      <h4>Credit 남용</h4>
+      <p>악의적 앱이 자신에게 과도한 Credit을 할당하면, 네트워크 대역폭을 독점하여 다른 애플리케이션의 통신을 방해합니다.</p>
+    </div>
+  </div>
+
+  <p>XDP_GEN은 커널 eBPF 내부에서 실행되므로, user-space 애플리케이션이 전송 상태에 직접 접근하거나 ACK/Credit 생성을 조작할 수 없습니다. eBPF verifier가 프로그램의 안전성을 보장합니다.</p>
+
+  <h3>4.3 지연 시간: 최소 경로 확보</h3>
+
+  <div class="analogy">
+    <div class="icon">⏱️</div>
+    <div class="title">비유: 우체국 자동 응답 시스템</div>
+    <p>편지를 받을 때마다 사람이 직접 확인하고 답장을 쓰는 것(user-space)보다, <b>우체국 기계가 자동으로 수취 확인서를 발행</b>하는 것(XDP_GEN)이 훨씬 빠릅니다. XDP_GEN은 ACK 생성을 NIC 드라이버의 패킷 수신 경로(NAPI)에서 직접 수행하므로, 데이터가 도착한 바로 그 시점에 최소 지연으로 ACK를 보낼 수 있습니다.</p>
+  </div>
+</div>
+
+<!-- ============================================ -->
+<!-- 5. 종합 비교 -->
+<!-- ============================================ -->
+<div class="section">
+  <h2>5. 종합 비교 요약</h2>
+
+  <table class="tbl">
+    <thead>
+      <tr><th>항목</th><th>ACK 패킷 (TCP/DCTCP)</th><th>Credit 패킷 (Homa)</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><b>역할</b></td>
+        <td>수신 확인 + 손실 감지</td>
+        <td>전송 허가 + 우선순위 스케줄링</td>
+      </tr>
+      <tr>
+        <td><b>생성 트리거</b></td>
+        <td>데이터 패킷을 받은 후</td>
+        <td>비예약 패킷 수신 + 스케줄링 결정</td>
+      </tr>
+      <tr>
+        <td><b>XDP_GEN 복잡도</b></td>
+        <td>낮음 (메타데이터 pop → 헤더 채우기)</td>
+        <td>높음 (rbtree 조회 → 스케줄링 → 다단계 tail call)</td>
+      </tr>
+      <tr>
+        <td><b>eBPF 코드량</b></td>
+        <td>TCP 전체: 2,173 LoC</td>
+        <td>Homa 전체: 5,349 LoC</td>
+      </tr>
+      <tr>
+        <td><b>크기</b></td>
+        <td>~54 bytes (헤더만)</td>
+        <td>프로토콜별 상이 (헤더 + Credit 정보)</td>
+      </tr>
+      <tr>
+        <td><b>핵심 자료구조</b></td>
+        <td>per-CPU 큐 (FIFO)</td>
+        <td><code>bpf_rbtree</code> (우선순위 정렬)</td>
+      </tr>
+      <tr>
+        <td><b>병합(Coalescing)</b></td>
+        <td>여러 ACK를 하나로 병합 가능</td>
+        <td>여러 RPC의 Credit을 배치로 전송</td>
+      </tr>
+      <tr>
+        <td><b>페이싱</b></td>
+        <td>속도 기반 (Carousel 타이밍 휠)</td>
+        <td>Credit 기반 (RPC별 PKT_QUEUE 버킷)</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ============================================ -->
+<!-- 6. 핵심 요약 -->
+<!-- ============================================ -->
+<div class="section">
+  <h2>6. 한 줄 요약</h2>
+
+  <div class="analogy">
+    <div class="icon">🎯</div>
+    <div class="title">정리</div>
+    <p><b>ACK 패킷</b>은 "잘 받았으니 다음 걸 보내세요"라는 <b>과거에 대한 확인</b>이고,<br>
+    <b>Credit 패킷</b>은 "이만큼 보내도 됩니다"라는 <b>미래에 대한 허가</b>입니다.<br><br>
+    둘 다 전송 프로토콜의 핵심인데, 기존에는 커널 TCP 스택 전체를 거쳐야 해서 느렸습니다. <b>XDP_GEN</b>은 이 패킷들을 NIC 드라이버 수준에서 커널 eBPF 내부적으로 직접 생성·전송하여, 성능을 극대화하면서도 보안과 격리를 유지합니다.</p>
+  </div>
+</div>
+
+</div>
+</body>
+</html>
