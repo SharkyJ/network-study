@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>sk_buff 구조체 심층 분석 — 왜 느린가?</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+KR:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0f1117;
+  --bg2: #161922;
+  --bg3: #1e2231;
+  --accent: #38bdf8;
+  --accent2: #a78bfa;
+  --accent3: #fb923c;
+  --accent4: #34d399;
+  --pink: #f472b6;
+  --red: #f87171;
+  --text: #e2e8f0;
+  --text-dim: #94a3b8;
+  --border: #2a3050;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: var(--bg); color: var(--text); font-family: 'Noto Sans KR', sans-serif; line-height: 1.85; }
+.wrap { max-width: 920px; margin: 0 auto; padding: 50px 32px 80px; }
+
+/* Header */
+header { margin-bottom: 48px; }
+header .badge {
+  display: inline-block; font-family: 'JetBrains Mono', monospace;
+  font-size: 11px; letter-spacing: 1.5px; color: var(--accent);
+  background: rgba(56,189,248,0.1); padding: 4px 12px; border-radius: 4px; margin-bottom: 14px;
+}
+header h1 { font-size: 32px; font-weight: 700; line-height: 1.3; margin-bottom: 10px; }
+header .sub { font-size: 15px; color: var(--text-dim); }
+
+/* Section */
+.section { margin-bottom: 56px; }
+.section h2 {
+  font-size: 22px; font-weight: 700; margin-bottom: 18px;
+  padding-bottom: 10px; border-bottom: 1px solid var(--border);
+}
+.section h3 { font-size: 17px; font-weight: 600; color: var(--accent2); margin: 28px 0 10px; }
+p { font-size: 15px; color: var(--text-dim); margin-bottom: 14px; }
+p strong, p b { color: var(--text); font-weight: 600; }
+
+code {
+  font-family: 'JetBrains Mono', monospace; font-size: 13px;
+  background: var(--bg3); padding: 1px 6px; border-radius: 3px; color: var(--accent4);
+}
+
+/* Analogy */
+.analogy {
+  background: linear-gradient(135deg, rgba(56,189,248,0.06), rgba(167,139,250,0.06));
+  border: 1px solid rgba(56,189,248,0.2); border-radius: 10px;
+  padding: 22px 26px; margin: 20px 0;
+}
+.analogy .icon { font-size: 22px; margin-bottom: 8px; }
+.analogy .title { font-weight: 600; color: var(--accent); font-size: 14px; margin-bottom: 6px; }
+.analogy p { font-size: 14px; margin-bottom: 0; }
+
+/* Key point */
+.key-point {
+  border-radius: 8px; padding: 16px 20px; margin: 18px 0;
+  font-size: 14px; color: var(--text-dim);
+}
+.key-point.orange { background: rgba(251,146,60,0.07); border: 1px solid rgba(251,146,60,0.2); }
+.key-point.orange strong { color: var(--accent3); }
+.key-point.red { background: rgba(248,113,113,0.07); border: 1px solid rgba(248,113,113,0.2); }
+.key-point.red strong { color: var(--red); }
+.key-point.green { background: rgba(52,211,153,0.07); border: 1px solid rgba(52,211,153,0.2); }
+.key-point.green strong { color: var(--accent4); }
+
+/* Diagram */
+.diagram {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+  padding: 28px; margin: 20px 0; overflow-x: auto;
+}
+.diagram .label {
+  font-family: 'JetBrains Mono', monospace; font-size: 11px;
+  color: var(--accent); letter-spacing: 1px; margin-bottom: 16px;
+}
+
+/* Code block */
+.code-block {
+  background: #0c0e14; border: 1px solid var(--border); border-radius: 8px;
+  padding: 20px 24px; margin: 16px 0; overflow-x: auto;
+  font-family: 'JetBrains Mono', monospace; font-size: 13px;
+  line-height: 1.8; color: #cbd5e1;
+}
+.code-block .cm { color: #6b7280; }
+.code-block .kw { color: var(--pink); }
+.code-block .tp { color: var(--accent); }
+.code-block .fn { color: var(--accent4); }
+.code-block .st { color: #fbbf24; }
+.code-block .hi { background: rgba(248,113,113,0.12); display: inline; padding: 1px 4px; border-radius: 2px; }
+
+/* Compare cards */
+.compare { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 20px 0; }
+@media (max-width: 640px) { .compare { grid-template-columns: 1fr; } }
+.compare .card {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 24px;
+}
+.compare .card .tag {
+  font-family: 'JetBrains Mono', monospace; font-size: 11px;
+  letter-spacing: 1px; margin-bottom: 10px;
+}
+.compare .card h4 { font-size: 16px; font-weight: 600; margin-bottom: 8px; }
+.compare .card p { font-size: 13px; margin-bottom: 0; }
+
+/* Table */
+.tbl { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px; }
+.tbl th {
+  text-align: left; padding: 10px 14px; font-size: 12px; color: var(--accent);
+  border-bottom: 1px solid var(--border); font-family: 'JetBrains Mono', monospace;
+}
+.tbl td { padding: 10px 14px; border-bottom: 1px solid rgba(42,48,80,0.4); color: var(--text-dim); }
+.tbl td code { font-size: 12px; }
+.tbl td b { color: var(--text); }
+
+/* Bottleneck cards */
+.bottleneck-grid { display: grid; grid-template-columns: 1fr; gap: 16px; margin: 20px 0; }
+.bottleneck {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+  padding: 24px; position: relative; overflow: hidden;
+}
+.bottleneck::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
+}
+.bottleneck.b1::before { background: var(--red); }
+.bottleneck.b2::before { background: var(--accent3); }
+.bottleneck.b3::before { background: var(--pink); }
+.bottleneck.b4::before { background: var(--accent2); }
+.bottleneck .b-num {
+  font-family: 'JetBrains Mono', monospace; font-size: 12px;
+  font-weight: 700; margin-bottom: 6px;
+}
+.bottleneck.b1 .b-num { color: var(--red); }
+.bottleneck.b2 .b-num { color: var(--accent3); }
+.bottleneck.b3 .b-num { color: var(--pink); }
+.bottleneck.b4 .b-num { color: var(--accent2); }
+.bottleneck h4 { font-size: 16px; font-weight: 600; margin-bottom: 8px; }
+.bottleneck p { font-size: 13px; margin-bottom: 6px; }
+.bottleneck .fix {
+  margin-top: 10px; padding: 10px 14px; border-radius: 6px;
+  background: rgba(52,211,153,0.06); border: 1px solid rgba(52,211,153,0.15);
+  font-size: 13px; color: var(--text-dim);
+}
+.bottleneck .fix strong { color: var(--accent4); }
+
+/* Memory layout visual */
+.mem-layout {
+  display: flex; flex-direction: column; gap: 0;
+  font-family: 'JetBrains Mono', monospace; font-size: 12px;
+  margin: 16px 0; max-width: 600px;
+}
+.mem-row {
+  display: flex; border: 1px solid var(--border); border-bottom: none;
+}
+.mem-row:last-child { border-bottom: 1px solid var(--border); }
+.mem-off {
+  width: 70px; padding: 6px 10px; background: var(--bg3);
+  color: var(--text-dim); text-align: right; border-right: 1px solid var(--border);
+  font-size: 10px;
+}
+.mem-field { flex: 1; padding: 6px 12px; display: flex; align-items: center; gap: 8px; }
+.mem-field .f-name { color: var(--text); font-weight: 500; }
+.mem-field .f-desc { color: var(--text-dim); font-size: 10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="badge">Linux 커널 네트워크 스택 분석</div>
+  <h1><code style="font-size:inherit; background:none; padding:0; color:var(--accent);">sk_buff</code> 구조체 심층 분석</h1>
+  <p class="sub">Linux 네트워크 스택의 핵심 데이터 구조인 <code>sk_buff</code>의 내부 구조를 파헤치고, 이것이 고속 네트워크에서 성능 병목이 되는 이유와 eTran/XDP_GEN이 이를 어떻게 우회하는지 설명합니다.</p>
+</header>
+
+<!-- ============================================ -->
+<!-- 1. sk_buff란? -->
+<!-- ============================================ -->
+<div class="section">
+  <h2>1. <code>sk_buff</code>란 무엇인가?</h2>
+
+  <p><code>sk_buff</code>(socket buffer)는 Linux 커널에서 <b>네트워크 패킷 하나를 표현하는 메타데이터 구조체</b>입니다. 패킷이 NIC에 도착한 순간부터 애플리케이션에 전달될 때까지, 커널 네트워크 스택의 <b>모든 계층</b>이 이 구조체를 통해 패킷을 다룹니다.</p>
+
+  <div class="analogy">
+    <div class="icon">📦</div>
+    <div class="title">비유: 택배 운송장</div>
+    <p>택배 상자(패킷 데이터)에 붙어 있는 <b>운송장</b>이 <code>sk_buff</code>입니다. 운송장에는 보내는 사람, 받는 사람, 분류 코드, 취급 주의 사항, 배송 추적 이력 등이 적혀 있습니다. 택배가 물류센터를 거칠 때마다 각 센터가 운송장에 도장을 찍고 정보를 추가합니다. 문제는 이 운송장이 <b>상자보다 더 클 수도 있을 만큼 거대하다</b>는 것입니다.</p>
+  </div>
+
+  <div class="key-point orange">
+    <strong>핵심 사실:</strong> <code>sk_buff</code>는 약 <b>232바이트</b> 크기의 구조체입니다. ACK 패킷(54바이트)을 하나 보내기 위해, 패킷 데이터보다 <b>4배 이상 큰 메타데이터</b>를 할당하고 초기화해야 합니다.
+  </div>
+</div>
+
+<!-- ============================================ -->
+<!-- 2. 내부 구조 -->
+<!-- ============================================ -->
+<div class="section">
+  <h2>2. <code>sk_buff</code> 내부 구조</h2>
+
+  <h3>2.1 메모리 레이아웃</h3>
+  <p><code>sk_buff</code>는 패킷 데이터 자체가 아니라, 패킷에 대한 <b>메타데이터</b>를 담는 구조체입니다. 실제 패킷 데이터는 별도의 버퍼에 존재하며, <code>sk_buff</code>의 포인터들이 이 버퍼를 가리킵니다.</p>
+
+  <div class="diagram">
+    <div class="label">sk_buff와 패킷 데이터 버퍼의 관계</div>
+    <svg viewBox="0 0 780 340" width="100%" style="max-width:780px;">
+      <!-- sk_buff 구조체 -->
+      <rect x="30" y="20" width="300" height="300" rx="8" fill="var(--bg3)" stroke="var(--red)" stroke-width="1.5"/>
+      <text x="180" y="46" font-size="13" fill="var(--red)" text-anchor="middle" font-weight="700" font-family="JetBrains Mono">struct sk_buff (~232 bytes)</text>
+
+      <rect x="50" y="62" width="260" height="22" rx="3" fill="rgba(56,189,248,0.1)" stroke="rgba(56,189,248,0.3)"/>
+      <text x="60" y="78" font-size="10" fill="var(--accent)" font-family="JetBrains Mono">struct sock *sk</text>
+      <text x="245" y="78" font-size="9" fill="var(--text-dim)" font-family="Noto Sans KR">소켓 연결</text>
+
+      <rect x="50" y="90" width="260" height="22" rx="3" fill="rgba(52,211,153,0.1)" stroke="rgba(52,211,153,0.3)"/>
+      <text x="60" y="106" font-size="10" fill="var(--accent4)" font-family="JetBrains Mono">*head, *data, *tail, *end</text>
+      <text x="278" y="106" font-size="9" fill="var(--text-dim)" font-family="Noto Sans KR">포인터</text>
+
+      <rect x="50" y="118" width="260" height="22" rx="3" fill="rgba(167,139,250,0.1)" stroke="rgba(167,139,250,0.3)"/>
+      <text x="60" y="134" font-size="10" fill="var(--accent2)" font-family="JetBrains Mono">transport_header</text>
+      <text x="222" y="134" font-size="9" fill="var(--text-dim)" font-family="Noto Sans KR">L4 오프셋</text>
+
+      <rect x="50" y="146" width="260" height="22" rx="3" fill="rgba(167,139,250,0.1)" stroke="rgba(167,139,250,0.3)"/>
+      <text x="60" y="162" font-size="10" fill="var(--accent2)" font-family="JetBrains Mono">network_header</text>
+      <text x="214" y="162" font-size="9" fill="var(--text-dim)" font-family="Noto Sans KR">L3 오프셋</text>
+
+      <rect x="50" y="174" width="260" height="22" rx="3" fill="rgba(167,139,250,0.1)" stroke="rgba(167,139,250,0.3)"/>
+      <text x="60" y="190" font-size="10" fill="var(--accent2)" font-family="JetBrains Mono">mac_header</text>
+      <text x="192" y="190" font-size="9" fill="var(--text-dim)" font-family="Noto Sans KR">L2 오프셋</text>
+
+      <rect x="50" y="202" width="260" height="22" rx="3" fill="rgba(251,146,60,0.1)" stroke="rgba(251,146,60,0.3)"/>
+      <text x="60" y="218" font-size="10" fill="var(--accent3)" font-family="JetBrains Mono">protocol, priority, mark</text>
+      <text x="262" y="218" font-size="9" fill="var(--text-dim)" font-family="Noto Sans KR">분류</text>
+
+      <rect x="50" y="230" width="260" height="22" rx="3" fill="rgba(244,114,182,0.1)" stroke="rgba(244,114,182,0.3)"/>
+      <text x="60" y="246" font-size="10" fill="var(--pink)" font-family="JetBrains Mono">refcount_t users</text>
+      <text x="210" y="246" font-size="9" fill="var(--text-dim)" font-family="Noto Sans KR">참조 카운트</text>
+
+      <rect x="50" y="258" width="260" height="22" rx="3" fill="rgba(100,116,139,0.15)" stroke="rgba(100,116,139,0.3)"/>
+      <text x="60" y="274" font-size="10" fill="var(--text-dim)" font-family="JetBrains Mono">tstamp, hash, vlan, csum...</text>
+      <text x="278" y="274" font-size="9" fill="var(--text-dim)" font-family="Noto Sans KR">기타</text>
+
+      <rect x="50" y="286" width="260" height="22" rx="3" fill="rgba(100,116,139,0.1)" stroke="rgba(100,116,139,0.2)"/>
+      <text x="60" y="302" font-size="10" fill="#64748b" font-family="JetBrains Mono">nf_conntrack, tc_index...</text>
+      <text x="268" y="302" font-size="9" fill="#64748b" font-family="Noto Sans KR">부가</text>
+
+      <!-- 패킷 데이터 버퍼 -->
+      <rect x="440" y="40" width="300" height="260" rx="8" fill="var(--bg3)" stroke="var(--accent4)" stroke-width="1.5"/>
+      <text x="590" y="66" font-size="13" fill="var(--accent4)" text-anchor="middle" font-weight="700" font-family="JetBrains Mono">패킷 데이터 버퍼</text>
+
+      <rect x="460" y="80" width="260" height="35" rx="3" fill="rgba(100,116,139,0.08)" stroke="rgba(100,116,139,0.2)"/>
+      <text x="480" y="96" font-size="10" fill="var(--text-dim)" font-family="Noto Sans KR">headroom (여유 공간)</text>
+      <text x="700" y="102" font-size="9" fill="#64748b" font-family="JetBrains Mono">← head</text>
+
+      <rect x="460" y="115" width="260" height="30" rx="3" fill="rgba(30,58,95,0.6)" stroke="rgba(56,189,248,0.3)"/>
+      <text x="480" y="134" font-size="10" fill="var(--accent)" font-family="Noto Sans KR">Ethernet 헤더 (14B)</text>
+      <text x="700" y="134" font-size="9" fill="#64748b" font-family="JetBrains Mono">← data</text>
+
+      <rect x="460" y="145" width="260" height="30" rx="3" fill="rgba(30,77,58,0.6)" stroke="rgba(52,211,153,0.3)"/>
+      <text x="480" y="164" font-size="10" fill="var(--accent4)" font-family="Noto Sans KR">IP 헤더 (20B)</text>
+
+      <rect x="460" y="175" width="260" height="30" rx="3" fill="rgba(77,30,58,0.6)" stroke="rgba(244,114,182,0.3)"/>
+      <text x="480" y="194" font-size="10" fill="var(--pink)" font-family="Noto Sans KR">TCP 헤더 (20B)</text>
+
+      <rect x="460" y="205" width="260" height="55" rx="3" fill="rgba(251,146,60,0.08)" stroke="rgba(251,146,60,0.2)"/>
+      <text x="480" y="228" font-size="10" fill="var(--accent3)" font-family="Noto Sans KR">페이로드 (가변)</text>
+      <text x="480" y="246" font-size="9" fill="#64748b" font-family="Noto Sans KR">ACK의 경우: 0 bytes</text>
+      <text x="700" y="256" font-size="9" fill="#64748b" font-family="JetBrains Mono">← tail</text>
+
+      <rect x="460" y="260" width="260" height="30" rx="3" fill="rgba(100,116,139,0.08)" stroke="rgba(100,116,139,0.2)"/>
+      <text x="480" y="279" font-size="10" fill="var(--text-dim)" font-family="Noto Sans KR">tailroom (여유 공간)</text>
+      <text x="700" y="279" font-size="9" fill="#64748b" font-family="JetBrains Mono">← end</text>
+
+      <!-- 연결 화살표 -->
+      <line x1="310" y1="100" x2="458" y2="100" stroke="var(--accent4)" stroke-width="1.5" stroke-dasharray="6,3" marker-end="url(#ar-g)"/>
+      <text x="370" y="93" font-size="9" fill="var(--accent4)" font-family="Noto Sans KR">포인터가 가리킴</text>
+
+      <defs>
+        <marker id="ar-g" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="var(--accent4)"/></marker>
+      </defs>
+    </svg>
+  </div>
+
+  <h3>2.2 주요 필드 역할별 분류</h3>
+
+  <table class="tbl">
+    <thead><tr><th>분류</th><th>필드</th><th>크기</th><th>역할</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><b>데이터 위치 추적</b></td>
+        <td><code>head</code>, <code>data</code>, <code>tail</code>, <code>end</code></td>
+        <td>4 × 8B</td>
+        <td>패킷 버퍼 내 각 계층 헤더/페이로드 위치 지시. 계층이 처리될 때마다 <code>data</code> 포인터를 이동(push/pull)하여 다음 계층의 헤더를 노출</td>
+      </tr>
+      <tr>
+        <td><b>소켓 연결</b></td>
+        <td><code>struct sock *sk</code></td>
+        <td>8B</td>
+        <td>이 패킷이 어떤 소켓(TCP 연결)에 속하는지 가리킴. TCP 상태 머신, 수신 큐, 송신 버퍼와 연결</td>
+      </tr>
+      <tr>
+        <td><b>헤더 오프셋</b></td>
+        <td><code>transport_header</code>, <code>network_header</code>, <code>mac_header</code></td>
+        <td>3 × 2B</td>
+        <td>L4(TCP/UDP), L3(IP), L2(Ethernet) 헤더의 시작 위치를 오프셋으로 기록. 각 계층이 자기 헤더를 빠르게 찾기 위함</td>
+      </tr>
+      <tr>
+        <td><b>프로토콜 정보</b></td>
+        <td><code>protocol</code>, <code>pkt_type</code>, <code>ip_summed</code></td>
+        <td>~6B</td>
+        <td>패킷의 L3 프로토콜 종류, 유니캐스트/브로드캐스트 구분, 체크섬 오프로드 상태</td>
+      </tr>
+      <tr>
+        <td><b>수명 관리</b></td>
+        <td><code>refcount_t users</code></td>
+        <td>4B</td>
+        <td>참조 카운트. 여러 계층/컴포넌트가 동시 참조 가능. <code>kfree_skb()</code>로 감소, 0이 되면 해제. <b>atomic 연산</b> 필요</td>
+      </tr>
+      <tr>
+        <td><b>연결 리스트</b></td>
+        <td><code>struct sk_buff *next, *prev</code></td>
+        <td>2 × 8B</td>
+        <td>소켓 수신/송신 큐에 연결 리스트로 관리됨. 큐 삽입/제거 시 <b>spin lock</b> 필요</td>
+      </tr>
+      <tr>
+        <td><b>부가 메타데이터</b></td>
+        <td><code>tstamp</code>, <code>hash</code>, <code>vlan_tci</code>, <code>mark</code>, <code>priority</code>, <code>tc_index</code>, <code>nf_conntrack</code> ...</td>
+        <td>~100B+</td>
+        <td>타임스탬프, flow 해시, VLAN, QoS, 트래픽 제어, netfilter conntrack 등. <b>대부분의 패킷에서 이 필드들 중 극히 일부만 실제 사용됨</b></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>2.3 4개 포인터의 동작 원리</h3>
+  <p><code>head</code>/<code>data</code>/<code>tail</code>/<code>end</code> 포인터는 패킷이 커널 스택을 통과하면서 동적으로 이동합니다.</p>
+
+  <div class="code-block">
+<span class="cm">/* 패킷이 커널 스택을 올라가면서 data 포인터가 이동하는 과정 */</span>
+
+<span class="cm">/* NIC 드라이버가 패킷을 받으면: */</span>
+skb->data = skb->head + headroom;  <span class="cm">/* Ethernet 헤더 시작 */</span>
+skb->tail = skb->data + pkt_len;
+
+<span class="cm">/* L2 처리 후 → L3로 전달 (Ethernet 헤더를 "벗겨냄"): */</span>
+<span class="fn">skb_pull</span>(skb, ETH_HLEN);  <span class="cm">/* data 포인터를 14B 앞으로 이동 */</span>
+<span class="cm">/* 이제 skb->data는 IP 헤더를 가리킴 */</span>
+
+<span class="cm">/* L3 처리 후 → L4로 전달 (IP 헤더를 "벗겨냄"): */</span>
+<span class="fn">skb_pull</span>(skb, ip_hdr_len);  <span class="cm">/* data를 또 앞으로 이동 */</span>
+<span class="cm">/* 이제 skb->data는 TCP 헤더를 가리킴 */</span>
+
+<span class="cm">/* 송신 시에는 반대로 — 헤더를 "추가"할 때: */</span>
+<span class="fn">skb_push</span>(skb, <span class="kw">sizeof</span>(<span class="tp">struct</span> tcphdr));  <span class="cm">/* data를 뒤로 이동 */</span>
+<span class="cm">/* headroom에 새 TCP 헤더를 쓸 공간 확보 */</span>
+  </div>
+
+  <div class="analogy">
+    <div class="icon">🧅</div>
+    <div class="title">비유: 양파 껍질 벗기기</div>
+    <p>수신 시: 양파(패킷)의 껍질(헤더)을 바깥부터 하나씩 벗깁니다. Ethernet → IP → TCP 순서로 각 계층이 자기 헤더를 처리하고 <code>data</code> 포인터를 앞으로 밀어 다음 계층에게 넘깁니다.<br>
+    송신 시: 반대로 알맹이(페이로드)에 껍질(헤더)을 하나씩 감쌉니다. TCP → IP → Ethernet 순서로 <code>data</code>를 뒤로 당겨 헤더 공간을 확보합니다.</p>
+  </div>
+</div>
+
+<!-- ============================================ -->
+<!-- 3. 왜 느린가? -->
+<!-- ============================================ -->
+<div class="section">
+  <h2>3. <code>sk_buff</code>가 성능 병목이 되는 4가지 이유</h2>
+
+  <p>저속 네트워크(1 Gbps 이하)에서는 <code>sk_buff</code>의 오버헤드가 문제되지 않았습니다. 하지만 10/25/100 Gbps 고속 네트워크에서 <b>초당 수백만 패킷</b>을 처리해야 할 때, 매 패킷마다 반복되는 이 오버헤드는 치명적인 병목이 됩니다.</p>
+
+  <div class="bottleneck-grid">
+
+    <!-- 병목 1 -->
+    <div class="bottleneck b1">
+      <div class="b-num">병목 #1</div>
+      <h4>매 패킷마다 무거운 메모리 할당/해제</h4>
+      <p>패킷이 도착할 때마다 커널은 <code>kmem_cache_alloc()</code>을 호출하여 ~232바이트의 <code>sk_buff</code>와 별도의 패킷 데이터 버퍼를 할당합니다. 패킷 처리 후에는 <code>kfree_skb()</code>로 해제합니다.</p>
+      <p>25 Gbps 네트워크에서 64바이트 패킷 기준 초당 <b>~37 Mpps</b>(3,700만 패킷)가 도착합니다. 매 패킷마다 할당/해제를 수행하면 slab 할당자의 freelist 관리, 캐시 라인 오염, NUMA 노드 간 메모리 접근 등이 누적됩니다.</p>
+      <div class="fix">
+        <strong>✅ XDP_GEN 해결책:</strong> <code>page_pool</code>에서 <code>xdp_frame</code>을 <b>배치(batch)로 사전 할당</b>하고 재활용합니다. NAPI poll 시작 시 한 번에 64개 프레임을 확보하여, 루프 내에서는 할당 비용이 거의 0입니다.
+      </div>
+    </div>
+
+    <!-- 병목 2 -->
+    <div class="bottleneck b2">
+      <div class="b-num">병목 #2</div>
+      <h4>구조체가 지나치게 크고 범용적</h4>
+      <p><code>sk_buff</code>는 TCP, UDP, ICMP, SCTP, IPsec, 터널링, netfilter, 트래픽 제어 등 <b>커널의 모든 네트워크 기능</b>을 지원해야 합니다. 그래서 대부분의 패킷에서 사용하지 않는 필드까지 포함합니다.</p>
+      <p>ACK 패킷 하나(54바이트)를 보내는 데 필요한 정보는 src/dst IP, src/dst 포트, seq, ack_seq, window 정도로 <b>~30바이트</b>면 충분합니다. 하지만 232바이트 전체를 할당하고 초기화해야 합니다. 이는 <b>CPU 캐시를 불필요하게 소모</b>합니다.</p>
+      <div class="fix">
+        <strong>✅ XDP_GEN 해결책:</strong> <code>xdp_frame</code>(~64바이트)과 전송 프로토콜에 특화된 <code>ack_meta</code>(~30바이트) 구조체만 사용합니다. 필요한 필드만 담은 최소한의 메타데이터로 패킷을 생성합니다.
+      </div>
+    </div>
+
+    <!-- 병목 3 -->
+    <div class="bottleneck b3">
+      <div class="b-num">병목 #3</div>
+      <h4>전체 프로토콜 스택 순회 강제</h4>
+      <p><code>sk_buff</code>는 커널 네트워크 스택의 "공용 화물"이므로, ACK 하나를 보내려 해도 아래의 전체 경로를 통과해야 합니다:</p>
+
+      <div class="code-block" style="margin: 12px 0;">
+<span class="cm">/* TCP ACK 전송의 커널 경로 (sk_buff 사용) */</span>
+
+<span class="fn">tcp_send_ack</span>()
+  → <span class="fn">alloc_skb</span>()                 <span class="cm">/* ① sk_buff 할당 */</span>
+  → <span class="fn">tcp_transmit_skb</span>()          <span class="cm">/* ② TCP 헤더 구성 */</span>
+    → <span class="fn">icsk_af_ops->queue_xmit</span>() <span class="cm">/* ③ IP 계층 전달 */</span>
+      → <span class="fn">ip_queue_xmit</span>()          <span class="cm">/* ④ 라우팅 조회 */</span>
+        → <span class="fn">ip_local_out</span>()          <span class="cm">/* ⑤ netfilter LOCAL_OUT */</span>
+          → <span class="fn">ip_output</span>()            <span class="cm">/* ⑥ netfilter POST_ROUTING */</span>
+            → <span class="fn">dev_queue_xmit</span>()    <span class="cm">/* ⑦ Qdisc 트래픽 제어 */</span>
+              → <span class="fn">dev_hard_start_xmit</span>() <span class="cm">/* ⑧ NIC 드라이버 전송 */</span>
+      </div>
+
+      <p>각 계층은 <code>sk_buff</code>의 필드를 읽고 쓰며, 도중에 netfilter hook, conntrack, Qdisc 등 <b>부가 서브시스템</b>도 개입합니다. 54바이트짜리 ACK에도 이 전체 경로가 적용됩니다.</p>
+      <div class="fix">
+        <strong>✅ XDP_GEN 해결책:</strong> 이 전체 스택을 <b>완전히 건너뜁니다</b>. XDP_GEN 프로그램이 사전 할당된 프레임에 직접 헤더를 채우고, <code>dev_xdp_enqueue()</code> kfunc 한 번 호출로 NIC 드라이버에 직접 전송합니다. 중간 계층이 전혀 없습니다.
+      </div>
+    </div>
+
+    <!-- 병목 4 -->
+    <div class="bottleneck b4">
+      <div class="b-num">병목 #4</div>
+      <h4>참조 카운트와 락에 의한 멀티코어 경합</h4>
+      <p><code>sk_buff</code>의 수명은 <code>refcount_t users</code> (atomic 참조 카운트)로 관리됩니다. 또한 소켓 수신 큐(<code>sk->sk_receive_queue</code>)에 패킷을 넣을 때 <b>spin lock</b>을 잡아야 합니다.</p>
+      <p>멀티코어 환경에서 atomic 연산과 spin lock은 <b>캐시 라인 바운싱</b>(cache line bouncing)을 유발합니다 — 하나의 코어가 캐시 라인을 수정하면, 그 라인을 가진 다른 모든 코어의 캐시가 무효화(invalidate)되어 다시 메모리에서 읽어와야 합니다.</p>
+      <div class="fix">
+        <strong>✅ XDP_GEN 해결책:</strong> <b>per-CPU 자료구조</b>만 사용합니다. per-CPU 큐, per-CPU xdp_frame 풀 — 각 코어가 자기만의 데이터를 다루므로 교차 코어 동기화가 거의 없습니다. atomic 연산도, spin lock도 필요하지 않습니다.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================ -->
+<!-- 4. 경로 비교 시각화 -->
+<!-- ============================================ -->
+<div class="section">
+  <h2>4. ACK 전송 경로 비교: <code>sk_buff</code> vs. XDP_GEN</h2>
+
+  <div class="diagram">
+    <div class="label">기존 Linux TCP ACK 경로 (sk_buff 사용)</div>
+    <svg viewBox="0 0 780 130" width="100%" style="max-width:780px;">
+      <defs>
+        <marker id="ar-r" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><path d="M0,0 L7,2.5 L0,5" fill="var(--red)"/></marker>
+      </defs>
+      <!-- boxes -->
+      <rect x="10" y="30" width="90" height="40" rx="4" fill="rgba(248,113,113,0.1)" stroke="var(--red)" stroke-width="0.8"/>
+      <text x="55" y="48" font-size="9" fill="var(--red)" text-anchor="middle" font-family="JetBrains Mono">tcp_send</text>
+      <text x="55" y="60" font-size="9" fill="var(--red)" text-anchor="middle" font-family="JetBrains Mono">_ack()</text>
+
+      <line x1="100" y1="50" x2="115" y2="50" stroke="var(--red)" stroke-width="1" marker-end="url(#ar-r)"/>
+
+      <rect x="117" y="30" width="80" height="40" rx="4" fill="rgba(248,113,113,0.1)" stroke="var(--red)" stroke-width="0.8"/>
+      <text x="157" y="48" font-size="9" fill="var(--red)" text-anchor="middle" font-family="JetBrains Mono">alloc_skb</text>
+      <text x="157" y="60" font-size="8" fill="var(--text-dim)" text-anchor="middle" font-family="Noto Sans KR">232B 할당</text>
+
+      <line x1="197" y1="50" x2="212" y2="50" stroke="var(--red)" stroke-width="1" marker-end="url(#ar-r)"/>
+
+      <rect x="214" y="30" width="80" height="40" rx="4" fill="rgba(248,113,113,0.1)" stroke="var(--red)" stroke-width="0.8"/>
+      <text x="254" y="48" font-size="9" fill="var(--red)" text-anchor="middle" font-family="JetBrains Mono">tcp_xmit</text>
+      <text x="254" y="60" font-size="8" fill="var(--text-dim)" text-anchor="middle" font-family="Noto Sans KR">TCP 헤더</text>
+
+      <line x1="294" y1="50" x2="309" y2="50" stroke="var(--red)" stroke-width="1" marker-end="url(#ar-r)"/>
+
+      <rect x="311" y="30" width="80" height="40" rx="4" fill="rgba(248,113,113,0.1)" stroke="var(--red)" stroke-width="0.8"/>
+      <text x="351" y="48" font-size="9" fill="var(--red)" text-anchor="middle" font-family="JetBrains Mono">ip_queue</text>
+      <text x="351" y="60" font-size="8" fill="var(--text-dim)" text-anchor="middle" font-family="Noto Sans KR">라우팅+IP</text>
+
+      <line x1="391" y1="50" x2="406" y2="50" stroke="var(--red)" stroke-width="1" marker-end="url(#ar-r)"/>
+
+      <rect x="408" y="30" width="80" height="40" rx="4" fill="rgba(248,113,113,0.1)" stroke="var(--red)" stroke-width="0.8"/>
+      <text x="448" y="48" font-size="9" fill="var(--red)" text-anchor="middle" font-family="JetBrains Mono">netfilter</text>
+      <text x="448" y="60" font-size="8" fill="var(--text-dim)" text-anchor="middle" font-family="Noto Sans KR">방화벽 hook</text>
+
+      <line x1="488" y1="50" x2="503" y2="50" stroke="var(--red)" stroke-width="1" marker-end="url(#ar-r)"/>
+
+      <rect x="505" y="30" width="80" height="40" rx="4" fill="rgba(248,113,113,0.1)" stroke="var(--red)" stroke-width="0.8"/>
+      <text x="545" y="48" font-size="9" fill="var(--red)" text-anchor="middle" font-family="JetBrains Mono">Qdisc</text>
+      <text x="545" y="60" font-size="8" fill="var(--text-dim)" text-anchor="middle" font-family="Noto Sans KR">트래픽 제어</text>
+
+      <line x1="585" y1="50" x2="600" y2="50" stroke="var(--red)" stroke-width="1" marker-end="url(#ar-r)"/>
+
+      <rect x="602" y="30" width="80" height="40" rx="4" fill="rgba(248,113,113,0.1)" stroke="var(--red)" stroke-width="0.8"/>
+      <text x="642" y="48" font-size="9" fill="var(--red)" text-anchor="middle" font-family="JetBrains Mono">드라이버</text>
+      <text x="642" y="60" font-size="8" fill="var(--text-dim)" text-anchor="middle" font-family="Noto Sans KR">NIC 전송</text>
+
+      <line x1="682" y1="50" x2="697" y2="50" stroke="var(--red)" stroke-width="1" marker-end="url(#ar-r)"/>
+
+      <rect x="699" y="30" width="70" height="40" rx="4" fill="rgba(248,113,113,0.1)" stroke="var(--red)" stroke-width="0.8"/>
+      <text x="734" y="48" font-size="9" fill="var(--red)" text-anchor="middle" font-family="JetBrains Mono">kfree</text>
+      <text x="734" y="60" font-size="8" fill="var(--text-dim)" text-anchor="middle" font-family="Noto Sans KR">해제</text>
+
+      <text x="390" y="100" font-size="12" fill="var(--red)" text-anchor="middle" font-weight="600" font-family="Noto Sans KR">📏 8단계, 수천 줄의 커널 코드 통과</text>
+      <text x="390" y="118" font-size="10" fill="var(--text-dim)" text-anchor="middle" font-family="Noto Sans KR">54바이트 ACK 하나에 이 전체 경로가 실행됩니다</text>
+    </svg>
+  </div>
+
+  <div class="diagram">
+    <div class="label">eTran XDP_GEN ACK 경로 (sk_buff 미사용)</div>
+    <svg viewBox="0 0 780 130" width="100%" style="max-width:780px;">
+      <defs>
+        <marker id="ar-g2" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><path d="M0,0 L7,2.5 L0,5" fill="var(--accent4)"/></marker>
+      </defs>
+
+      <rect x="60" y="30" width="150" height="45" rx="6" fill="rgba(52,211,153,0.1)" stroke="var(--accent4)" stroke-width="1.2"/>
+      <text x="135" y="50" font-size="10" fill="var(--accent4)" text-anchor="middle" font-family="JetBrains Mono" font-weight="600">XDP_GEN 프로그램</text>
+      <text x="135" y="65" font-size="9" fill="var(--text-dim)" text-anchor="middle" font-family="Noto Sans KR">메타데이터 pop + 헤더 채움</text>
+
+      <line x1="210" y1="52" x2="270" y2="52" stroke="var(--accent4)" stroke-width="1.5" marker-end="url(#ar-g2)"/>
+      <text x="240" y="44" font-size="8" fill="var(--accent4)" font-family="JetBrains Mono">XDP_TX</text>
+
+      <rect x="275" y="30" width="180" height="45" rx="6" fill="rgba(52,211,153,0.1)" stroke="var(--accent4)" stroke-width="1.2"/>
+      <text x="365" y="50" font-size="10" fill="var(--accent4)" text-anchor="middle" font-family="JetBrains Mono" font-weight="600">dev_xdp_enqueue()</text>
+      <text x="365" y="65" font-size="9" fill="var(--text-dim)" text-anchor="middle" font-family="Noto Sans KR">NIC TX 큐에 직접 삽입</text>
+
+      <line x1="455" y1="52" x2="515" y2="52" stroke="var(--accent4)" stroke-width="1.5" marker-end="url(#ar-g2)"/>
+
+      <rect x="520" y="30" width="120" height="45" rx="6" fill="rgba(52,211,153,0.1)" stroke="var(--accent4)" stroke-width="1.2"/>
+      <text x="580" y="50" font-size="10" fill="var(--accent4)" text-anchor="middle" font-family="JetBrains Mono" font-weight="600">NIC 전송</text>
+      <text x="580" y="65" font-size="9" fill="var(--text-dim)" text-anchor="middle" font-family="Noto Sans KR">mlx5 드라이버</text>
+
+      <text x="390" y="105" font-size="12" fill="var(--accent4)" text-anchor="middle" font-weight="600" font-family="Noto Sans KR">📏 3단계, sk_buff 할당 없음, 중간 계층 없음</text>
+      <text x="390" y="123" font-size="10" fill="var(--text-dim)" text-anchor="middle" font-family="Noto Sans KR">사전 할당된 xdp_frame에 직접 헤더를 쓰고 NIC으로 바로 전송</text>
+    </svg>
+  </div>
+</div>
+
+<!-- ============================================ -->
+<!-- 5. 수치로 보는 차이 -->
+<!-- ============================================ -->
+<div class="section">
+  <h2>5. 수치로 보는 차이</h2>
+
+  <table class="tbl">
+    <thead>
+      <tr><th>항목</th><th><code>sk_buff</code> 경로</th><th>XDP_GEN 경로</th><th>차이</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><b>메타데이터 크기</b></td>
+        <td>~232 bytes</td>
+        <td><code>xdp_frame</code> ~64B + <code>ack_meta</code> ~30B</td>
+        <td><b>2.5배 ↓</b></td>
+      </tr>
+      <tr>
+        <td><b>메모리 할당</b></td>
+        <td>매 패킷 <code>kmem_cache_alloc</code></td>
+        <td><code>page_pool</code> 배치 사전 할당</td>
+        <td><b>per-pkt 비용 ≈ 0</b></td>
+      </tr>
+      <tr>
+        <td><b>커널 스택 계층 수</b></td>
+        <td>8단계 (TCP → IP → netfilter → Qdisc → 드라이버)</td>
+        <td>3단계 (XDP_GEN → enqueue → NIC)</td>
+        <td><b>5단계 제거</b></td>
+      </tr>
+      <tr>
+        <td><b>함수 호출 수</b></td>
+        <td>~30+ 함수</td>
+        <td>~5 함수</td>
+        <td><b>6배 ↓</b></td>
+      </tr>
+      <tr>
+        <td><b>동기화</b></td>
+        <td>atomic refcount + spin lock</td>
+        <td>per-CPU, 락 없음</td>
+        <td><b>교차 코어 경합 제거</b></td>
+      </tr>
+      <tr>
+        <td><b>netfilter hook</b></td>
+        <td>LOCAL_OUT + POST_ROUTING 통과</td>
+        <td>통과하지 않음</td>
+        <td><b>방화벽 오버헤드 제거</b></td>
+      </tr>
+      <tr>
+        <td><b>Qdisc</b></td>
+        <td>트래픽 제어 큐 통과</td>
+        <td>통과하지 않음</td>
+        <td><b>큐잉 오버헤드 제거</b></td>
+      </tr>
+      <tr>
+        <td><b>성능 (논문 §6.4.1)</b></td>
+        <td>기존 Linux TCP (기준)</td>
+        <td>per-core 4.47 Mpps (rx-drop + XDP_GEN)</td>
+        <td><b>고속 경로 달성</b></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ============================================ -->
+<!-- 6. 정리 -->
+<!-- ============================================ -->
+<div class="section">
+  <h2>6. 핵심 정리</h2>
+
+  <div class="key-point green">
+    <strong>한 줄 요약:</strong> <code>sk_buff</code>는 Linux 커널의 모든 네트워크 기능을 지원하기 위해 설계된 <b>범용 패킷 메타데이터 구조체</b>인데, 그 범용성 때문에 구조체가 크고, 할당이 무겁고, 전체 프로토콜 스택을 통과해야 하며, 멀티코어 동기화가 필요합니다. 고속 네트워크에서 ACK 같은 <b>단순한 제어 패킷</b>까지 이 무거운 경로를 거치게 하는 것이 병목이며, XDP_GEN은 <code>sk_buff</code>를 아예 사용하지 않고 최소한의 메타데이터와 사전 할당된 프레임으로 패킷을 직접 생성·전송하여 이 병목을 제거합니다.
+  </div>
+
+  <div class="compare">
+    <div class="card">
+      <div class="tag" style="color: var(--red);">sk_buff의 장점</div>
+      <h4>범용성과 호환성</h4>
+      <p>TCP, UDP, ICMP, IPsec, 터널링, 방화벽, QoS 등 커널의 모든 네트워크 기능이 하나의 통일된 패킷 표현으로 동작할 수 있습니다. 30년간 검증된 안정적인 추상화입니다.</p>
+    </div>
+    <div class="card">
+      <div class="tag" style="color: var(--accent4);">XDP_GEN의 장점</div>
+      <h4>특화된 고속 경로</h4>
+      <p>ACK/Credit 같은 단순 패킷에 한정하여, 불필요한 범용 인프라를 모두 제거한 <b>최소 경로</b>를 제공합니다. 범용성을 포기한 대신 극한의 성능을 달성합니다.</p>
+    </div>
+  </div>
+</div>
+
+</div>
+</body>
+</html>
