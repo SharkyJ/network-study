@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NAPI 심층 분석 — Linux 커널 패킷 수신의 핵심</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+KR:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0f1117;
+  --bg2: #161922;
+  --bg3: #1e2231;
+  --accent: #38bdf8;
+  --accent2: #a78bfa;
+  --accent3: #fb923c;
+  --accent4: #34d399;
+  --pink: #f472b6;
+  --red: #f87171;
+  --yellow: #fbbf24;
+  --text: #e2e8f0;
+  --text-dim: #94a3b8;
+  --border: #2a3050;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: var(--bg); color: var(--text); font-family: 'Noto Sans KR', sans-serif; line-height: 1.85; }
+.wrap { max-width: 940px; margin: 0 auto; padding: 50px 32px 80px; }
+
+header { margin-bottom: 48px; }
+header .badge {
+  display: inline-block; font-family: 'JetBrains Mono', monospace;
+  font-size: 11px; letter-spacing: 1.5px; color: var(--accent);
+  background: rgba(56,189,248,0.1); padding: 4px 12px; border-radius: 4px; margin-bottom: 14px;
+}
+header h1 { font-size: 32px; font-weight: 700; line-height: 1.3; margin-bottom: 10px; }
+header .sub { font-size: 15px; color: var(--text-dim); }
+
+.section { margin-bottom: 56px; }
+.section h2 {
+  font-size: 22px; font-weight: 700; margin-bottom: 18px;
+  padding-bottom: 10px; border-bottom: 1px solid var(--border);
+}
+.section h3 { font-size: 17px; font-weight: 600; color: var(--accent2); margin: 28px 0 10px; }
+.section h4 { font-size: 15px; font-weight: 600; color: var(--accent3); margin: 20px 0 8px; }
+p { font-size: 15px; color: var(--text-dim); margin-bottom: 14px; }
+p strong, p b { color: var(--text); font-weight: 600; }
+code {
+  font-family: 'JetBrains Mono', monospace; font-size: 13px;
+  background: var(--bg3); padding: 1px 6px; border-radius: 3px; color: var(--accent4);
+}
+
+.analogy {
+  background: linear-gradient(135deg, rgba(56,189,248,0.06), rgba(167,139,250,0.06));
+  border: 1px solid rgba(56,189,248,0.2); border-radius: 10px;
+  padding: 22px 26px; margin: 20px 0;
+}
+.analogy .icon { font-size: 22px; margin-bottom: 8px; }
+.analogy .title { font-weight: 600; color: var(--accent); font-size: 14px; margin-bottom: 6px; }
+.analogy p { font-size: 14px; margin-bottom: 0; }
+
+.key-point {
+  border-radius: 8px; padding: 16px 20px; margin: 18px 0;
+  font-size: 14px; color: var(--text-dim);
+}
+.key-point.orange { background: rgba(251,146,60,0.07); border: 1px solid rgba(251,146,60,0.2); }
+.key-point.orange strong { color: var(--accent3); }
+.key-point.red { background: rgba(248,113,113,0.07); border: 1px solid rgba(248,113,113,0.2); }
+.key-point.red strong { color: var(--red); }
+.key-point.green { background: rgba(52,211,153,0.07); border: 1px solid rgba(52,211,153,0.2); }
+.key-point.green strong { color: var(--accent4); }
+.key-point.blue { background: rgba(56,189,248,0.07); border: 1px solid rgba(56,189,248,0.2); }
+.key-point.blue strong { color: var(--accent); }
+.key-point.pink { background: rgba(244,114,182,0.07); border: 1px solid rgba(244,114,182,0.2); }
+.key-point.pink strong { color: var(--pink); }
+
+.diagram {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+  padding: 28px; margin: 20px 0; overflow-x: auto;
+}
+.diagram .label {
+  font-family: 'JetBrains Mono', monospace; font-size: 11px;
+  color: var(--accent); letter-spacing: 1px; margin-bottom: 16px;
+}
+
+.code-block {
+  background: #0c0e14; border: 1px solid var(--border); border-radius: 8px;
+  padding: 20px 24px; margin: 16px 0; overflow-x: auto;
+  font-family: 'JetBrains Mono', monospace; font-size: 13px;
+  line-height: 1.8; color: #cbd5e1;
+}
+.code-block .cm { color: #6b7280; }
+.code-block .kw { color: var(--pink); }
+.code-block .tp { color: var(--accent); }
+.code-block .fn { color: var(--accent4); }
+.code-block .num { color: var(--accent3); }
+.code-block .hi { background: rgba(244,114,182,0.12); display: inline-block; padding: 0 4px; border-radius: 2px; }
+
+.compare { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 20px 0; }
+@media (max-width: 640px) { .compare { grid-template-columns: 1fr; } }
+.compare .card {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 24px;
+}
+.compare .card .tag {
+  font-family: 'JetBrains Mono', monospace; font-size: 11px;
+  letter-spacing: 1px; margin-bottom: 10px;
+}
+.compare .card h4 { font-size: 16px; font-weight: 600; margin-bottom: 8px; color: var(--text); }
+.compare .card p { font-size: 13px; margin-bottom: 0; }
+
+.compare3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin: 20px 0; }
+@media (max-width: 760px) { .compare3 { grid-template-columns: 1fr; } }
+.compare3 .card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; }
+.compare3 .card .tag { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 1px; margin-bottom: 8px; }
+.compare3 .card h4 { font-size: 15px; font-weight: 600; margin-bottom: 6px; color: var(--text); }
+.compare3 .card p { font-size: 12px; margin-bottom: 0; }
+
+.tbl { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px; }
+.tbl th {
+  text-align: left; padding: 10px 14px; font-size: 12px; color: var(--accent);
+  border-bottom: 1px solid var(--border); font-family: 'JetBrains Mono', monospace;
+}
+.tbl td { padding: 10px 14px; border-bottom: 1px solid rgba(42,48,80,0.4); color: var(--text-dim); }
+.tbl td code { font-size: 12px; }
+.tbl td b { color: var(--text); }
+
+.step-flow { margin: 16px 0; }
+.step {
+  display: flex; gap: 16px; align-items: flex-start;
+  padding: 14px 18px; margin: 8px 0;
+  background: var(--bg2); border-radius: 8px;
+  border-left: 3px solid var(--accent);
+}
+.step.pink { border-left-color: var(--pink); }
+.step.orange { border-left-color: var(--accent3); }
+.step.green { border-left-color: var(--accent4); }
+.step.red { border-left-color: var(--red); }
+.step.purple { border-left-color: var(--accent2); }
+.step.yellow { border-left-color: var(--yellow); }
+.step .num {
+  font-family: 'JetBrains Mono', monospace; font-size: 13px;
+  font-weight: 700; min-width: 28px; color: var(--accent);
+}
+.step.pink .num { color: var(--pink); }
+.step.orange .num { color: var(--accent3); }
+.step.green .num { color: var(--accent4); }
+.step.red .num { color: var(--red); }
+.step.purple .num { color: var(--accent2); }
+.step.yellow .num { color: var(--yellow); }
+.step .body { font-size: 14px; color: var(--text-dim); }
+.step .body strong { color: var(--text); }
+.step .body code { font-size: 12px; }
+
+.timeline {
+  position: relative; margin: 24px 0 24px 40px;
+  border-left: 2px solid var(--border);
+  padding-left: 28px;
+}
+.timeline .evt {
+  position: relative; margin-bottom: 24px;
+}
+.timeline .evt::before {
+  content: '';
+  position: absolute; left: -35px; top: 4px;
+  width: 12px; height: 12px; border-radius: 50%;
+  border: 2px solid var(--accent); background: var(--bg);
+}
+.timeline .evt.active::before { background: var(--accent); }
+.timeline .evt.pink::before { border-color: var(--pink); }
+.timeline .evt.pink.active::before { background: var(--pink); }
+.timeline .evt.green::before { border-color: var(--accent4); }
+.timeline .evt.green.active::before { background: var(--accent4); }
+.timeline .evt.orange::before { border-color: var(--accent3); }
+.timeline .evt.orange.active::before { background: var(--accent3); }
+.timeline .evt .evt-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+.timeline .evt .evt-desc { font-size: 13px; color: var(--text-dim); }
+.timeline .evt .evt-code {
+  font-family: 'JetBrains Mono', monospace; font-size: 11px;
+  color: var(--accent4); background: var(--bg3); padding: 2px 8px;
+  border-radius: 3px; display: inline-block; margin-top: 4px;
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="badge">Linux 커널 네트워크 스택 심층 분석</div>
+  <h1>NAPI와 NAPI Poll 주기<br>— 패킷 수신의 심장부</h1>
+  <p class="sub">Linux 커널이 초당 수백만 패킷을 효율적으로 처리하는 핵심 메커니즘인 NAPI(New API)의 동작 원리를 상세히 설명하고, eTran/XDP_GEN이 이 메커니즘을 어떻게 활용하는지 분석합니다.</p>
+</header>
+
+<!-- ============================================ -->
+<!-- 1. NAPI란? -->
+<!-- ============================================ -->
+<div class="section">
+  <h2>1. NAPI란 무엇인가?</h2>
+
+  <p><b>NAPI(New API)</b>는 Linux 커널 2.6(2003년)에 도입된 <b>네트워크 패킷 수신 처리 프레임워크</b>입니다. 기존의 순수 인터럽트 기반 수신 방식의 문제를 해결하기 위해, <b>인터럽트(interrupt)와 폴링(polling)을 혼합</b>한 하이브리드 방식을 사용합니다.</p>
+
+  <div class="analogy">
+    <div class="icon">🔔</div>
+    <div class="title">비유: 초인종과 택배 수거</div>
+    <p>택배가 올 때마다 초인종을 누르는 방식(순수 인터럽트)을 생각해 보세요. 택배가 하루에 2~3개면 괜찮지만, 초당 수만 개의 택배가 쏟아지면 <b>초인종 소리 처리만으로 하루가 끝납니다</b>. NAPI는 이 문제를 다음과 같이 해결합니다:<br><br>
+    ① 첫 번째 택배가 오면 초인종이 울립니다 (인터럽트).<br>
+    ② 문을 열고 "이제부터 초인종 끄세요, 제가 직접 나가서 가져올게요"라고 합니다 (인터럽트 비활성화).<br>
+    ③ 현관 앞에 쌓인 택배를 한꺼번에 가져옵니다 — 최대 64개까지 (폴링, budget).<br>
+    ④ 더 이상 택배가 없으면 "다시 초인종 켜 주세요"라고 합니다 (인터럽트 재활성화).<br><br>
+    이렇게 하면 택배가 많을 때는 효율적으로 배치 처리하고, 택배가 없을 때는 다른 일을 할 수 있습니다.</p>
+  </div>
+
+  <h3>1.1 NAPI가 해결하는 문제</h3>
+
+  <div class="compare">
+    <div class="card">
+      <div class="tag" style="color: var(--red);">❌ NAPI 이전: 순수 인터럽트 방식</div>
+      <h4>패킷마다 인터럽트 발생</h4>
+      <p>NIC에 패킷이 도착할 때마다 하드웨어 인터럽트가 발생합니다. CPU는 현재 하던 작업을 중단하고 인터럽트 핸들러를 실행해야 합니다. 고속 네트워크에서는 초당 수백만 번의 인터럽트로 인해 CPU가 <b>인터럽트 처리에만 매몰되는 "livelock"</b> 상태에 빠집니다. 실제 패킷 처리보다 인터럽트 진입/복귀 오버헤드가 더 큽니다.</p>
+    </div>
+    <div class="card">
+      <div class="tag" style="color: var(--accent4);">✅ NAPI: 인터럽트 + 폴링 혼합</div>
+      <h4>첫 패킷만 인터럽트, 나머지는 폴링</h4>
+      <p>첫 번째 패킷의 인터럽트로 "새 패킷이 왔구나"를 인지한 후, 인터럽트를 끄고 <b>폴링(polling) 모드</b>로 전환합니다. 이후 패킷은 CPU가 주도적으로 NIC 링 버퍼에서 꺼내옵니다. 이로써 인터럽트 오버헤드를 제거하고, 배치 처리로 효율을 높입니다.</p>
+    </div>
+  </div>
+
+  <div class="key-point orange">
+    <strong>핵심 아이디어:</strong> NAPI는 패킷 부하에 따라 <b>적응적(adaptive)</b>으로 동작합니다. 패킷이 적으면 인터럽트 기반(저지연), 패킷이 많으면 폴링 기반(고처리량). 두 세계의 장점을 결합한 것입니다.
+  </div>
+</div>
+
+<!-- ============================================ -->
+<!-- 2. NAPI 핵심 구조 -->
+<!-- ============================================ -->
+<div class="section">
+  <h2>2. NAPI의 핵심 구조</h2>
+
+  <h3>2.1 <code>struct napi_struct</code></h3>
+  <p>NAPI의 핵심 자료구조입니다. NIC 드라이버가 각 수신 큐(RX queue)마다 하나씩 생성합니다.</p>
+
+  <div class="code-block">
+<span class="cm">/* include/linux/netdevice.h (Linux v6.6 기준, 간략화) */</span>
+
+<span class="kw">struct</span> <span class="tp">napi_struct</span> {
+    <span class="kw">struct</span> list_head  poll_list;   <span class="cm">/* softirq의 poll 대기 리스트에 연결 */</span>
+    <span class="kw">unsigned long</span>     state;       <span class="cm">/* NAPI_STATE_SCHED, _DISABLE 등 */</span>
+    <span class="kw">int</span>               weight;      <span class="cm">/* poll 1회당 처리할 최대 패킷 수 (budget) */</span>
+                                     <span class="cm">/* 기본값: NAPI_POLL_WEIGHT = <span class="num">64</span> */</span>
+
+    <span class="kw">int</span>             (*<span class="fn">poll</span>)(<span class="kw">struct</span> napi_struct *, <span class="kw">int</span>);
+                                     <span class="cm">/* ★ NIC 드라이버가 등록하는 poll 콜백 함수 */</span>
+                                     <span class="cm">/* 이 함수 안에서 실제 패킷 수신이 일어남 */</span>
+
+    <span class="kw">struct</span> net_device *dev;        <span class="cm">/* 소속 네트워크 장치 (예: eth0) */</span>
+    <span class="kw">int</span>               rx_count;    <span class="cm">/* 이번 poll에서 처리한 패킷 수 */</span>
+    <span class="kw">struct</span> gro_list   gro_hash[];  <span class="cm">/* GRO (Generic Receive Offload) 리스트 */</span>
+};
+  </div>
+
+  <h3>2.2 관련 핵심 상수</h3>
+  <table class="tbl">
+    <thead><tr><th>상수/설정</th><th>기본값</th><th>의미</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>NAPI_POLL_WEIGHT</code></td>
+        <td><b>64</b></td>
+        <td>poll 함수 1회 호출당 처리할 최대 패킷 수. 이 값이 "budget"</td>
+      </tr>
+      <tr>
+        <td><code>netdev_budget</code></td>
+        <td><b>300</b></td>
+        <td>softirq 1회 실행당 전체 NAPI 인스턴스를 합산하여 처리할 최대 패킷 수</td>
+      </tr>
+      <tr>
+        <td><code>netdev_budget_usecs</code></td>
+        <td><b>2000 (2ms)</b></td>
+        <td>softirq 1회 실행의 최대 허용 시간. 이 시간을 초과하면 나머지는 다음으로 미룸</td>
+      </tr>
+      <tr>
+        <td>NIC Ring Buffer 크기</td>
+        <td><b>256~4096</b></td>
+        <td>NIC 하드웨어의 수신 디스크립터 링 크기. 드라이버가 여기서 패킷을 가져옴</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>2.3 NAPI 상태 머신</h3>
+  <p><code>napi_struct</code>는 다음 상태들 사이를 전이합니다:</p>
+
+  <div class="diagram">
+    <div class="label">NAPI 상태 전이 다이어그램</div>
+    <svg viewBox="0 0 760 280" width="100%" style="max-width:760px;">
+      <defs>
+        <marker id="a1" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="var(--accent)"/></marker>
+        <marker id="a2" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="var(--accent4)"/></marker>
+        <marker id="a3" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="var(--accent3)"/></marker>
+        <marker id="a4" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="var(--pink)"/></marker>
+      </defs>
+
+      <!-- States -->
+      <rect x="30" y="100" width="140" height="60" rx="30" fill="rgba(100,116,139,0.15)" stroke="var(--text-dim)" stroke-width="1.5"/>
+      <text x="100" y="128" font-size="13" fill="var(--text)" text-anchor="middle" font-weight="600" font-family="JetBrains Mono">IDLE</text>
+      <text x="100" y="146" font-size="10" fill="var(--text-dim)" text-anchor="middle" font-family="Noto Sans KR">대기 상태</text>
+
+      <rect x="300" y="30" width="160" height="60" rx="30" fill="rgba(56,189,248,0.12)" stroke="var(--accent)" stroke-width="1.5"/>
+      <text x="380" y="58" font-size="13" fill="var(--accent)" text-anchor="middle" font-weight="600" font-family="JetBrains Mono">SCHED</text>
+      <text x="380" y="76" font-size="10" fill="var(--text-dim)" text-anchor="middle" font-family="Noto Sans KR">poll 예약됨</text>
+
+      <rect x="300" y="170" width="160" height="60" rx="30" fill="rgba(52,211,153,0.12)" stroke="var(--accent4)" stroke-width="1.5"/>
+      <text x="380" y="198" font-size="13" fill="var(--accent4)" text-anchor="middle" font-weight="600" font-family="JetBrains Mono">POLLING</text>
+      <text x="380" y="216" font-size="10" fill="var(--text-dim)" text-anchor="middle" font-family="Noto Sans KR">패킷 처리 중</text>
+
+      <rect x="580" y="100" width="150" height="60" rx="30" fill="rgba(244,114,182,0.12)" stroke="var(--pink)" stroke-width="1.5"/>
+      <text x="655" y="128" font-size="13" fill="var(--pink)" text-anchor="middle" font-weight="600" font-family="JetBrains Mono">COMPLETE</text>
+      <text x="655" y="146" font-size="10" fill="var(--text-dim)" text-anchor="middle" font-family="Noto Sans KR">poll 완료</text>
+
+      <!-- Arrows -->
+      <path d="M 170 115 Q 230 60 298 60" fill="none" stroke="var(--accent)" stroke-width="1.5" marker-end="url(#a1)"/>
+      <text x="210" y="72" font-size="9" fill="var(--accent)" font-family="Noto Sans KR">인터럽트 발생</text>
+      <text x="210" y="84" font-size="8" fill="var(--text-dim)" font-family="JetBrains Mono">napi_schedule()</text>
+
+      <path d="M 380 90 L 380 168" fill="none" stroke="var(--accent4)" stroke-width="1.5" marker-end="url(#a2)"/>
+      <text x="392" y="128" font-size="9" fill="var(--accent4)" font-family="Noto Sans KR">softirq 실행</text>
+      <text x="392" y="140" font-size="8" fill="var(--text-dim)" font-family="JetBrains Mono">napi->poll(budget)</text>
+
+      <path d="M 460 195 Q 530 160 578 135" fill="none" stroke="var(--pink)" stroke-width="1.5" marker-end="url(#a4)"/>
+      <text x="510" y="157" font-size="9" fill="var(--pink)" font-family="Noto Sans KR">work &lt; budget</text>
+      <text x="510" y="169" font-size="8" fill="var(--text-dim)" font-family="JetBrains Mono">napi_complete()</text>
+
+      <path d="M 580 140 Q 400 260 170 145" fill="none" stroke="var(--accent3)" stroke-width="1.5" marker-end="url(#a3)" stroke-dasharray="6,3"/>
+      <text x="340" y="258" font-size="9" fill="var(--accent3)" font-family="Noto Sans KR">인터럽트 재활성화 → IDLE 복귀</text>
+
+      <!-- Busy poll loop -->
+      <path d="M 460 210 Q 510 240 460 230 Q 415 255 380 230" fill="none" stroke="var(--yellow)" stroke-width="1.2" marker-end="url(#a3)"/>
+      <text x="475" y="250" font-size="9" fill="var(--yellow)" font-family="Noto Sans KR">work == budget</text>
+      <text x="475" y="262" font-size="8" fill="var(--text-dim)" font-family="Noto Sans KR">아직 패킷 남음 → 계속 poll</text>
+    </svg>
+  </div>
+</div>
+
+<!-- ============================================ -->
+<!-- 3. NAPI Poll 주기 상세 -->
+<!-- ============================================ -->
+<div class="section">
+  <h2>3. NAPI Poll 주기 — 한 사이클의 전체 흐름</h2>
+
+  <p>하나의 NAPI poll 주기는 인터럽트부터 flush까지의 완전한 사이클입니다. 아래에서 각 단계를 상세히 추적합니다.</p>
+
+  <div class="diagram">
+    <div class="label">NAPI Poll 주기 전체 흐름도</div>
+    <svg viewBox="0 0 800 580" width="100%" style="max-width:800px;">
+      <defs>
+        <marker id="fa" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><path d="M0,0 L7,2.5 L0,5" fill="var(--accent)"/></marker>
+        <marker id="fg" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><path d="M0,0 L7,2.5 L0,5" fill="var(--accent4)"/></marker>
+        <marker id="fp" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><path d="M0,0 L7,2.5 L0,5" fill="var(--pink)"/></marker>
+        <marker id="fo" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><path d="M0,0 L7,2.5 L0,5" fill="var(--accent3)"/></marker>
+      </defs>
+
+      <!-- 단계 배경 -->
+      <rect x="20" y="10" width="760" height="90" rx="6" fill="rgba(248,113,113,0.04)" stroke="rgba(248,113,113,0.15)" stroke-dasharray="4,3"/>
+      <text x="36" y="30" font-size="10" fill="var(--red)" font-family="JetBrains Mono" letter-spacing="1">하드웨어 인터럽트 단계</text>
+
+      <rect x="20" y="110" width="760" height="90" rx="6" fill="rgba(56,189,248,0.04)" stroke="rgba(56,189,248,0.15)" stroke-dasharray="4,3"/>
+      <text x="36" y="130" font-size="10" fill="var(--accent)" font-family="JetBrains Mono" letter-spacing="1">SOFTIRQ 스케줄링 단계</text>
+
+      <rect x="20" y="210" width="760" height="170" rx="6" fill="rgba(52,211,153,0.04)" stroke="rgba(52,211,153,0.15)" stroke-dasharray="4,3"/>
+      <text x="36" y="230" font-size="10" fill="var(--accent4)" font-family="JetBrains Mono" letter-spacing="1">POLL 루프 단계 (패킷 처리 핵심)</text>
+
+      <rect x="20" y="390" width="760" height="80" rx="6" fill="rgba(244,114,182,0.04)" stroke="rgba(244,114,182,0.15)" stroke-dasharray="4,3"/>
+      <text x="36" y="410" font-size="10" fill="var(--pink)" font-family="JetBrains Mono" letter-spacing="1">FLUSH 단계</text>
+
+      <rect x="20" y="480" width="760" height="80" rx="6" fill="rgba(251,146,60,0.04)" stroke="rgba(251,146,60,0.15)" stroke-dasharray="4,3"/>
+      <text x="36" y="500" font-size="10" fill="var(--accent3)" font-family="JetBrains Mono" letter-spacing="1">완료 / 인터럽트 재활성화</text>
+
+      <!-- Step 1 -->
+      <rect x="60" y="42" width="220" height="44" rx="6" fill="var(--bg3)" stroke="var(--red)" stroke-width="0.8"/>
+      <text x="80" y="62" font-size="11" fill="var(--red)" font-family="JetBrains Mono" font-weight="600">① NIC 하드웨어 인터럽트</text>
+      <text x="80" y="76" font-size="10" fill="var(--text-dim)" font-family="Noto Sans KR">패킷 도착 → IRQ 발생</text>
+
+      <line x1="280" y1="64" x2="330" y2="64" stroke="var(--red)" stroke-width="1" marker-end="url(#fa)"/>
+
+      <rect x="332" y="42" width="240" height="44" rx="6" fill="var(--bg3)" stroke="var(--red)" stroke-width="0.8"/>
+      <text x="352" y="62" font-size="11" fill="var(--red)" font-family="JetBrains Mono" font-weight="600">② 인터럽트 핸들러 실행</text>
+      <text x="352" y="76" font-size="10" fill="var(--text-dim)" font-family="Noto Sans KR">NIC 인터럽트 비활성화 + napi_schedule()</text>
+
+      <!-- Step 2 -->
+      <line x1="452" y1="86" x2="452" y2="135" stroke="var(--accent)" stroke-width="1" marker-end="url(#fa)"/>
+
+      <rect x="332" y="137" width="280" height="48" rx="6" fill="var(--bg3)" stroke="var(--accent)" stroke-width="0.8"/>
+      <text x="352" y="157" font-size="11" fill="var(--accent)" font-family="JetBrains Mono" font-weight="600">③ NET_RX_SOFTIRQ 트리거</text>
+      <text x="352" y="173" font-size="10" fill="var(--text-dim)" font-family="Noto Sans KR">napi_struct를 poll_list에 추가, softirq 예약</text>
+
+      <!-- Step 3: Poll loop -->
+      <line x1="472" y1="185" x2="472" y2="240" stroke="var(--accent4)" stroke-width="1" marker-end="url(#fg)"/>
+
+      <rect x="60" y="245" width="310" height="48" rx="6" fill="var(--bg3)" stroke="var(--accent4)" stroke-width="1.2"/>
+      <text x="80" y="265" font-size="11" fill="var(--accent4)" font-family="JetBrains Mono" font-weight="600">④ napi->poll(budget=64) 실행</text>
+      <text x="80" y="281" font-size="10" fill="var(--text-dim)" font-family="Noto Sans KR">NIC 드라이버의 poll 콜백 — 패킷 수신 시작</text>
+
+      <rect x="410" y="245" width="350" height="48" rx="6" fill="var(--bg3)" stroke="var(--accent4)" stroke-width="0.8"/>
+      <text x="430" y="265" font-size="11" fill="var(--accent4)" font-family="JetBrains Mono" font-weight="600">⑤ 루프: Ring Buffer에서 패킷 가져오기</text>
+      <text x="430" y="281" font-size="10" fill="var(--text-dim)" font-family="Noto Sans KR">최대 budget(64)개까지 반복 처리</text>
+
+      <rect x="60" y="305" width="310" height="48" rx="6" fill="var(--bg3)" stroke="var(--accent4)" stroke-width="0.8"/>
+      <text x="80" y="325" font-size="11" fill="var(--accent4)" font-family="JetBrains Mono" font-weight="600">⑥ 각 패킷: XDP → GRO → 스택</text>
+      <text x="80" y="341" font-size="10" fill="var(--text-dim)" font-family="Noto Sans KR">XDP hook 실행 후 napi_gro_receive()</text>
+
+      <rect x="410" y="305" width="350" height="48" rx="6" fill="var(--bg3)" stroke="var(--accent4)" stroke-width="0.8"/>
+      <text x="430" y="325" font-size="11" fill="var(--accent4)" font-family="JetBrains Mono" font-weight="600">⑦ XDP 판정: PASS / REDIRECT / DROP</text>
+      <text x="430" y="341" font-size="10" fill="var(--text-dim)" font-family="Noto Sans KR">AF_XDP 리다이렉트 또는 커널 스택 전달</text>
+
+      <!-- Flush -->
+      <line x1="400" y1="353" x2="400" y2="415" stroke="var(--pink)" stroke-width="1" marker-end="url(#fp)"/>
+
+      <rect x="60" y="417" width="340" height="38" rx="6" fill="var(--bg3)" stroke="var(--pink)" stroke-width="1.2"/>
+      <text x="80" y="441" font-size="11" fill="var(--pink)" font-family="JetBrains Mono" font-weight="600">⑧ xdp_do_flush() — XDP flush</text>
+
+      <rect x="430" y="417" width="340" height="38" rx="6" fill="rgba(244,114,182,0.15)" stroke="var(--pink)" stroke-width="1.5"/>
+      <text x="450" y="441" font-size="11" fill="var(--pink)" font-family="JetBrains Mono" font-weight="700">⑨ dev_xdp_gen_run() ★ eTran</text>
+
+      <!-- Complete -->
+      <line x1="400" y1="455" x2="400" y2="510" stroke="var(--accent3)" stroke-width="1" marker-end="url(#fo)"/>
+
+      <rect x="150" y="512" width="500" height="38" rx="6" fill="var(--bg3)" stroke="var(--accent3)" stroke-width="0.8"/>
+      <text x="400" y="536" font-size="11" fill="var(--accent3)" text-anchor="middle" font-family="JetBrains Mono" font-weight="600">⑩ napi_complete_done() — 인터럽트 재활성화, IDLE 복귀</text>
+    </svg>
+  </div>
+
+  <h3>3.1 각 단계 상세 설명</h3>
+
+  <div class="step-flow">
+    <div class="step red">
+      <div class="num">①</div>
+      <div class="body"><strong>NIC 하드웨어 인터럽트 발생.</strong> 패킷이 NIC에 도착하면, NIC은 DMA를 통해 패킷을 <b>Ring Buffer(수신 디스크립터 링)</b>에 기록하고, CPU에 하드웨어 인터럽트(IRQ)를 발생시킵니다.</div>
+    </div>
+    <div class="step red">
+      <div class="num">②</div>
+      <div class="body"><strong>인터럽트 핸들러 실행.</strong> NIC 드라이버의 인터럽트 핸들러가 실행됩니다. 이 핸들러는 아주 짧고 간단합니다 — <b>NIC 인터럽트를 비활성화</b>하고 <code>napi_schedule()</code>을 호출하여 softirq를 예약합니다. 패킷을 직접 처리하지 않습니다.</div>
+    </div>
+    <div class="step">
+      <div class="num">③</div>
+      <div class="body"><strong>NET_RX_SOFTIRQ 트리거.</strong> <code>napi_schedule()</code>이 <code>napi_struct</code>를 <b>per-CPU poll 리스트</b>에 추가하고, <code>NET_RX_SOFTIRQ</code> (소프트 인터럽트)를 예약합니다. softirq는 하드웨어 인터럽트보다 낮은 우선순위에서 실행되며, 실제 패킷 처리를 담당합니다.</div>
+    </div>
+    <div class="step green">
+      <div class="num">④</div>
+      <div class="body"><strong><code>napi->poll(budget)</code> 호출.</strong> softirq 핸들러(<code>net_rx_action</code>)가 poll 리스트에서 <code>napi_struct</code>를 꺼내어 드라이버가 등록한 <b>poll 콜백 함수</b>를 호출합니다. 인자로 <code>budget = 64</code>를 전달합니다. 이것이 "NAPI poll" 입니다.</div>
+    </div>
+    <div class="step green">
+      <div class="num">⑤</div>
+      <div class="body"><strong>Ring Buffer에서 패킷 가져오기 루프.</strong> 드라이버의 poll 함수 내부에서 <code>for</code> 루프를 돌며 NIC의 Ring Buffer에서 패킷을 하나씩 가져옵니다. <code>budget</code> (기본 64)개까지 처리합니다. 각 패킷에 대해 <code>sk_buff</code>를 할당하거나, XDP가 활성화된 경우 먼저 XDP를 실행합니다.</div>
+    </div>
+    <div class="step green">
+      <div class="num">⑥</div>
+      <div class="body"><strong>각 패킷에 대한 처리.</strong> XDP hook이 활성화되어 있으면 먼저 XDP eBPF 프로그램을 실행합니다. XDP_PASS면 GRO(Generic Receive Offload)를 거쳐 커널 스택으로 전달되고, XDP_REDIRECT면 AF_XDP 등으로 리다이렉트되며, XDP_DROP이면 폐기됩니다.</div>
+    </div>
+    <div class="step green">
+      <div class="num">⑦</div>
+      <div class="body"><strong>XDP 판정에 따른 분기.</strong> eTran 환경에서는 대부분의 데이터 패킷이 <code>XDP_REDIRECT</code>로 AF_XDP를 통해 user-space로 전달되고, ACK 메타데이터는 per-CPU 큐에 push됩니다.</div>
+    </div>
+    <div class="step pink">
+      <div class="num">⑧</div>
+      <div class="body"><strong><code>xdp_do_flush()</code> 호출.</strong> poll 루프가 끝나면 (또는 budget 소진 시) XDP redirect 등의 보류 작업을 flush합니다. devmap, cpumap, xskmap의 벌크 큐를 flush합니다.</div>
+    </div>
+    <div class="step pink">
+      <div class="num">⑨</div>
+      <div class="body"><strong><code>dev_xdp_gen_run()</code> — ★ eTran이 추가한 단계.</strong> <code>xdp_do_flush()</code> 내부에서 XDP_GEN hook이 실행됩니다. 사전 할당된 <code>xdp_frame</code>에 ACK/Credit 패킷을 채우고 NIC으로 전송합니다. <b>이것이 XDP_GEN이 NAPI poll 주기에 삽입되는 정확한 지점입니다.</b></div>
+    </div>
+    <div class="step orange">
+      <div class="num">⑩</div>
+      <div class="body"><strong><code>napi_complete_done()</code> — poll 완료.</strong> 처리한 패킷 수(work)가 budget보다 적으면 "더 이상 패킷이 없다"고 판단하여 <b>NIC 인터럽트를 재활성화</b>하고 IDLE 상태로 돌아갑니다. 만약 work == budget이면 아직 패킷이 남아 있을 수 있으므로 poll 리스트에 유지되어 다음 softirq에서 다시 poll됩니다.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================ -->
+<!-- 4. Budget과 완료 조건 -->
+<!-- ============================================ -->
+<div class="section">
+  <h2>4. Budget — Poll 루프의 제한 장치</h2>
+
+  <p>Budget은 NAPI poll이 한 번에 처리할 수 있는 <b>최대 패킷 수</b>입니다. 이 제한이 있는 이유는 네트워크가 CPU를 독점하지 못하게 하기 위함입니다.</p>
+
+  <div class="analogy">
+    <div class="icon">⏳</div>
+    <div class="title">비유: 뷔페 접시 제한</div>
+    <p>뷔페에서 한 번에 접시 64개까지만 들고 올 수 있다는 규칙(budget=64)이 있습니다. 64개를 다 가져왔는데 아직 음식이 남아 있으면 줄 끝으로 가서 다시 기다립니다(다음 poll 주기). 64개를 채우기 전에 음식이 떨어지면 "다 가져왔어요"라고 말합니다(napi_complete). 이 규칙은 한 사람이 뷔페를 독점하는 것(CPU 독점)을 방지합니다.</p>
+  </div>
+
+  <div class="code-block">
+<span class="cm">/* net/core/dev.c — net_rx_action() 간략화 */</span>
+
+<span class="kw">static void</span> <span class="fn">net_rx_action</span>(<span class="kw">struct</span> softirq_action *h)
+{
+    <span class="kw">unsigned long</span> time_limit = jiffies + usecs_to_jiffies(<span class="num">2000</span>); <span class="cm">/* 2ms */</span>
+    <span class="kw">int</span> budget = netdev_budget;  <span class="cm">/* 기본 300 */</span>
+
+    <span class="kw">for</span> (;;) {
+        <span class="kw">struct</span> napi_struct *n = <span class="fn">list_first_entry</span>(&poll_list);
+
+        <span class="cm">/* 드라이버의 poll 콜백 호출 — 이것이 "NAPI poll" */</span>
+        <span class="kw">int</span> work = n-><span class="fn">poll</span>(n, min(n->weight, budget));
+
+        budget -= work;
+
+        <span class="cm">/* 종료 조건: budget 소진 또는 시간 초과 */</span>
+        <span class="kw">if</span> (budget <= <span class="num">0</span> || time_after(jiffies, time_limit))
+            <span class="kw">break</span>;
+    }
+}
+  </div>
+
+  <h3>4.1 Poll 완료 판단 로직</h3>
+
+  <div class="compare">
+    <div class="card">
+      <div class="tag" style="color: var(--accent4);">work &lt; budget (예: 30 &lt; 64)</div>
+      <h4>✅ Poll 완료 (Complete)</h4>
+      <p>Ring Buffer의 패킷을 모두 처리했음을 의미합니다. 드라이버가 <code>napi_complete_done()</code>을 호출하여 <b>NIC 인터럽트를 재활성화</b>합니다. NAPI는 IDLE 상태로 돌아갑니다. 다음 패킷이 오면 새로운 인터럽트로 다시 시작합니다.</p>
+    </div>
+    <div class="card">
+      <div class="tag" style="color: var(--accent3);">work == budget (64 == 64)</div>
+      <h4>🔄 아직 패킷 남음 (Reschedule)</h4>
+      <p>Budget을 모두 사용했지만 Ring Buffer에 아직 패킷이 남아 있을 수 있습니다. <code>napi_complete_done()</code>을 호출하지 <b>않습니다</b>. NAPI는 poll 리스트에 유지되어 다음 softirq 실행에서 다시 poll됩니다. 인터럽트는 비활성화 상태를 유지합니다.</p>
+    </div>
+  </div>
+
+  <div class="key-point blue">
+    <strong>2단계 budget 시스템:</strong> NAPI에는 두 가지 budget이 있습니다.<br>
+    (1) <b>per-NAPI budget</b> = <code>napi->weight</code> (기본 64) — 하나의 NAPI 인스턴스가 poll 1회에 처리할 패킷 수.<br>
+    (2) <b>전역 budget</b> = <code>netdev_budget</code> (기본 300) — softirq 1회 실행에서 모든 NAPI 인스턴스가 합산하여 처리할 총 패킷 수.<br>
+    또한 <code>netdev_budget_usecs</code> (기본 2ms)의 시간 제한도 있어, budget이 남아도 2ms가 지나면 softirq가 종료됩니다.
+  </div>
+</div>
+
+<!-- ============================================ -->
+<!-- 5. NIC Ring Buffer와 NAPI의 관계 -->
+<!-- ============================================ -->
+<div class="section">
+  <h2>5. NIC Ring Buffer와 NAPI의 관계</h2>
+
+  <p>NIC과 커널 사이의 패킷 전달은 <b>Ring Buffer(순환 큐)</b>를 통해 이루어집니다. NAPI poll은 이 Ring Buffer에서 패킷을 꺼내는 것입니다.</p>
+
+  <div class="diagram">
+    <div class="label">NIC Ring Buffer → NAPI poll → 커널 스택 데이터 흐름</div>
+    <svg viewBox="0 0 800 340" width="100%" style="max-width:800px;">
+      <defs>
+        <marker id="ra" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><path d="M0,0 L7,2.5 L0,5" fill="var(--accent)"/></marker>
+        <marker id="rg" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><path d="M0,0 L7,2.5 L0,5" fill="var(--accent4)"/></marker>
+        <marker id="rp" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><path d="M0,0 L7,2.5 L0,5" fill="var(--pink)"/></marker>
+      </defs>
+
+      <!-- NIC -->
+      <rect x="20" y="40" width="180" height="240" rx="8" fill="rgba(248,113,113,0.06)" stroke="var(--red)" stroke-width="1"/>
+      <text x="110" y="65" font-size="12" fill="var(--red)" text-anchor="middle" font-weight="600" font-family="JetBrains Mono">NIC Hardware</text>
+
+      <!-- Ring buffer visual -->
+      <rect x="45" y="85" width="130" height="25" rx="3" fill="var(--accent4)" opacity="0.3"/>
+      <text x="110" y="102" font-size="9" fill="var(--accent4)" text-anchor="middle" font-family="JetBrains Mono">PKT [desc 0]</text>
+      <rect x="45" y="112" width="130" height="25" rx="3" fill="var(--accent4)" opacity="0.3"/>
+      <text x="110" y="129" font-size="9" fill="var(--accent4)" text-anchor="middle" font-family="JetBrains Mono">PKT [desc 1]</text>
+      <rect x="45" y="139" width="130" height="25" rx="3" fill="var(--accent4)" opacity="0.25"/>
+      <text x="110" y="156" font-size="9" fill="var(--accent4)" text-anchor="middle" font-family="JetBrains Mono">PKT [desc 2]</text>
+      <rect x="45" y="166" width="130" height="25" rx="3" fill="var(--accent)" opacity="0.15"/>
+      <text x="110" y="183" font-size="9" fill="var(--text-dim)" text-anchor="middle" font-family="JetBrains Mono">... (최대 4096)</text>
+      <rect x="45" y="193" width="130" height="25" rx="3" fill="rgba(100,116,139,0.1)" stroke="var(--border)"/>
+      <text x="110" y="210" font-size="9" fill="var(--text-dim)" text-anchor="middle" font-family="JetBrains Mono">(빈 슬롯)</text>
+      <rect x="45" y="220" width="130" height="25" rx="3" fill="rgba(100,116,139,0.1)" stroke="var(--border)"/>
+      <text x="110" y="237" font-size="9" fill="var(--text-dim)" text-anchor="middle" font-family="JetBrains Mono">(빈 슬롯)</text>
+
+      <text x="110" y="268" font-size="10" fill="var(--text-dim)" text-anchor="middle" font-family="Noto Sans KR">RX Ring Buffer</text>
+
+      <!-- DMA arrow -->
+      <text x="110" y="30" font-size="9" fill="var(--text-dim)" text-anchor="middle" font-family="Noto Sans KR">네트워크 → DMA로 기록</text>
+
+      <!-- NAPI poll -->
+      <rect x="260" y="80" width="220" height="180" rx="8" fill="rgba(52,211,153,0.06)" stroke="var(--accent4)" stroke-width="1"/>
+      <text x="370" y="105" font-size="12" fill="var(--accent4)" text-anchor="middle" font-weight="600" font-family="JetBrains Mono">NAPI poll()</text>
+
+      <text x="280" y="135" font-size="10" fill="var(--text-dim)" font-family="Noto Sans KR">for (i=0; i&lt;budget; i++) {</text>
+      <text x="290" y="155" font-size="10" fill="var(--accent4)" font-family="Noto Sans KR">Ring에서 패킷 1개 꺼냄</text>
+      <text x="290" y="175" font-size="10" fill="var(--accent4)" font-family="Noto Sans KR">XDP 프로그램 실행</text>
+      <text x="290" y="195" font-size="10" fill="var(--accent4)" font-family="Noto Sans KR">GRO / 스택 전달</text>
+      <text x="280" y="215" font-size="10" fill="var(--text-dim)" font-family="Noto Sans KR">}</text>
+      <text x="280" y="240" font-size="10" fill="var(--pink)" font-family="JetBrains Mono">xdp_do_flush()</text>
+
+      <line x1="200" y1="140" x2="258" y2="140" stroke="var(--accent4)" stroke-width="1.5" marker-end="url(#rg)"/>
+      <text x="215" y="133" font-size="8" fill="var(--accent4)" font-family="Noto Sans KR">패킷 꺼냄</text>
+
+      <!-- Output paths -->
+      <rect x="550" y="60" width="210" height="50" rx="6" fill="var(--bg3)" stroke="var(--accent)"/>
+      <text x="655" y="82" font-size="11" fill="var(--accent)" text-anchor="middle" font-family="Noto Sans KR">커널 네트워크 스택</text>
+      <text x="655" y="98" font-size="9" fill="var(--text-dim)" text-anchor="middle" font-family="JetBrains Mono">XDP_PASS → sk_buff 경로</text>
+
+      <rect x="550" y="130" width="210" height="50" rx="6" fill="var(--bg3)" stroke="var(--accent2)"/>
+      <text x="655" y="152" font-size="11" fill="var(--accent2)" text-anchor="middle" font-family="Noto Sans KR">AF_XDP (user-space)</text>
+      <text x="655" y="168" font-size="9" fill="var(--text-dim)" text-anchor="middle" font-family="JetBrains Mono">XDP_REDIRECT → 고속 경로</text>
+
+      <rect x="550" y="200" width="210" height="50" rx="6" fill="var(--bg3)" stroke="var(--pink)"/>
+      <text x="655" y="222" font-size="11" fill="var(--pink)" text-anchor="middle" font-family="Noto Sans KR">XDP_GEN (ACK 생성) ★</text>
+      <text x="655" y="238" font-size="9" fill="var(--text-dim)" text-anchor="middle" font-family="JetBrains Mono">flush 단계에서 실행</text>
+
+      <rect x="550" y="270" width="210" height="40" rx="6" fill="var(--bg3)" stroke="var(--text-dim)"/>
+      <text x="655" y="295" font-size="11" fill="var(--text-dim)" text-anchor="middle" font-family="Noto Sans KR">DROP (폐기)</text>
+
+      <line x1="480" y1="130" x2="548" y2="85" stroke="var(--accent)" stroke-width="1" marker-end="url(#ra)"/>
+      <line x1="480" y1="155" x2="548" y2="155" stroke="var(--accent2)" stroke-width="1" marker-end="url(#ra)"/>
+      <line x1="480" y1="190" x2="548" y2="225" stroke="var(--pink)" stroke-width="1.2" marker-end="url(#rp)"/>
+      <line x1="480" y1="210" x2="548" y2="285" stroke="var(--text-dim)" stroke-width="0.8" stroke-dasharray="4,3"/>
+    </svg>
+  </div>
+
+  <h3>5.1 멀티 큐와 RSS</h3>
+  <p>현대 NIC(mlx5, i40e 등)은 여러 개의 RX 큐를 가지고 있으며, <b>RSS(Receive Side Scaling)</b>를 사용하여 패킷의 flow hash에 따라 큐를 분산시킵니다. 각 큐는 자체적인 <code>napi_struct</code>를 가지며, 서로 다른 CPU 코어에서 독립적으로 poll됩니다.</p>
+
+  <div class="compare3">
+    <div class="card">
+      <div class="tag" style="color: var(--accent);">RX Queue 0</div>
+      <h4>CPU 코어 0</h4>
+      <p><code>napi_struct</code> #0<br>독립적 poll 루프<br>독립적 budget</p>
+    </div>
+    <div class="card">
+      <div class="tag" style="color: var(--accent2);">RX Queue 1</div>
+      <h4>CPU 코어 1</h4>
+      <p><code>napi_struct</code> #1<br>독립적 poll 루프<br>독립적 budget</p>
+    </div>
+    <div class="card">
+      <div class="tag" style="color: var(--accent4);">RX Queue N</div>
+      <h4>CPU 코어 N</h4>
+      <p><code>napi_struct</code> #N<br>독립적 poll 루프<br>독립적 budget</p>
+    </div>
+  </div>
+
+  <div class="key-point green">
+    <strong>핵심:</strong> 멀티 큐 + RSS 덕분에, NAPI poll은 <b>코어별로 병렬 실행</b>됩니다. 각 코어는 자기 큐에서만 패킷을 가져오므로 교차 코어 락이 필요 없습니다. eTran의 per-CPU 큐와 per-CPU xdp_frame 풀은 이 구조를 자연스럽게 활용합니다.
+  </div>
+</div>
+
+<!-- ============================================ -->
+<!-- 6. Busy Polling과 적응적 인터럽트 -->
+<!-- ============================================ -->
+<div class="section">
+  <h2>6. 고급 주제: Busy Polling과 적응적 인터럽트</h2>
+
+  <h3>6.1 Busy Polling</h3>
+  <p>지연 시간에 민감한 애플리케이션을 위해, Linux는 <b>Busy Polling</b> 모드도 지원합니다. 애플리케이션이 소켓에서 <code>recv()</code>를 호출할 때, softirq를 기다리지 않고 <b>애플리케이션 스레드가 직접 NIC poll을 수행</b>합니다.</p>
+
+  <div class="compare">
+    <div class="card">
+      <div class="tag" style="color: var(--text-dim);">일반 NAPI</div>
+      <h4>인터럽트 → softirq → poll</h4>
+      <p>패킷 도착 → IRQ → softirq 스케줄링 → <code>net_rx_action</code>에서 poll. 지연 시간은 softirq 스케줄링 대기 시간 포함.</p>
+    </div>
+    <div class="card">
+      <div class="tag" style="color: var(--accent);">Busy Polling</div>
+      <h4>앱 스레드가 직접 poll</h4>
+      <p><code>recv()</code> 호출 시 앱 스레드가 직접 <code>napi->poll()</code> 실행. softirq 대기 없이 <b>최소 지연</b>으로 패킷 수신. CPU를 더 사용하는 대신 지연 감소.</p>
+    </div>
+  </div>
+
+  <h3>6.2 적응적 인터럽트 병합 (Adaptive Interrupt Coalescing)</h3>
+  <p>현대 NIC은 <b>인터럽트 병합(Interrupt Coalescing)</b>을 지원합니다 — 패킷이 올 때마다 즉시 인터럽트를 발생시키는 대신, 일정 시간 또는 일정 패킷 수를 모아서 한 번에 인터럽트를 발생시킵니다.</p>
+
+  <table class="tbl">
+    <thead><tr><th>설정</th><th>의미</th><th>효과</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>rx-usecs</code></td>
+        <td>인터럽트 발생 전 대기 시간 (마이크로초)</td>
+        <td>↑ = 인터럽트 수 감소, 처리량 증가, 지연 증가</td>
+      </tr>
+      <tr>
+        <td><code>rx-frames</code></td>
+        <td>인터럽트 발생 전 대기 패킷 수</td>
+        <td>↑ = 배치 효과 증가, 지연 증가</td>
+      </tr>
+      <tr>
+        <td><code>adaptive-rx</code></td>
+        <td>부하에 따라 자동 조절</td>
+        <td>저부하 시 즉시 인터럽트(저지연), 고부하 시 병합(고처리량)</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="code-block">
+<span class="cm"># NIC 인터럽트 병합 설정 확인/변경</span>
+$ ethtool -c eth0         <span class="cm"># 현재 설정 확인</span>
+$ ethtool -C eth0 adaptive-rx on  <span class="cm"># 적응적 병합 활성화</span>
+$ ethtool -C eth0 rx-usecs 50     <span class="cm"># 50μs 대기 후 인터럽트</span>
+  </div>
+</div>
+
+<!-- ============================================ -->
+<!-- 7. GRO: NAPI poll 내부의 최적화 -->
+<!-- ============================================ -->
+<div class="section">
+  <h2>7. GRO — NAPI Poll 내부의 패킷 병합 최적화</h2>
+
+  <p><b>GRO(Generic Receive Offload)</b>는 NAPI poll 루프 내에서 수행되는 최적화로, 같은 flow(동일 연결)에 속하는 작은 패킷들을 <b>하나의 큰 패킷으로 병합</b>합니다.</p>
+
+  <div class="analogy">
+    <div class="icon">📦</div>
+    <div class="title">비유: 택배 합포장</div>
+    <p>같은 사람에게 가는 작은 소포 10개를 각각 배송하는 대신, 하나의 큰 박스에 합쳐서 보내면 배송비(커널 스택 처리 비용)가 10분의 1로 줄어듭니다. GRO는 NAPI poll 단계에서 이 합포장을 수행합니다.</p>
+  </div>
+
+  <div class="key-point blue">
+    <strong>GRO와 NAPI의 관계:</strong> GRO는 NAPI poll 루프 내에서 <code>napi_gro_receive()</code> 호출을 통해 실행됩니다. 같은 flow의 패킷들이 하나의 NAPI poll에서 여러 개 처리될 때, 이들을 병합하여 커널 스택에는 하나의 큰 <code>sk_buff</code>로 전달합니다. 이로써 sk_buff 할당 횟수와 스택 순회 횟수가 줄어듭니다.
+  </div>
+</div>
+
+<!-- ============================================ -->
+<!-- 8. XDP_GEN과 NAPI의 관계 -->
+<!-- ============================================ -->
+<div class="section">
+  <h2>8. eTran이 NAPI를 활용하는 방식</h2>
+
+  <p>eTran은 NAPI poll 주기의 구조를 깊이 이해하고, 그 안에 XDP_GEN을 자연스럽게 삽입합니다.</p>
+
+  <h3>8.1 XDP_GEN의 정확한 삽입 지점</h3>
+
+  <div class="timeline">
+    <div class="evt active">
+      <div class="evt-title">NAPI poll 시작</div>
+      <div class="evt-desc">드라이버의 poll 콜백 호출, budget=64</div>
+    </div>
+    <div class="evt green active">
+      <div class="evt-title">패킷 수신 루프 (기존 XDP)</div>
+      <div class="evt-desc">Ring Buffer에서 패킷 가져오기 → XDP 프로그램 실행 → ACK 메타데이터 push / 데이터 AF_XDP 리다이렉트</div>
+      <div class="evt-code">bpf_map_push_elem(&ack_queue, &meta)</div>
+    </div>
+    <div class="evt">
+      <div class="evt-title">수신 루프 종료</div>
+      <div class="evt-desc">budget 소진 또는 Ring Buffer 비어 있음</div>
+    </div>
+    <div class="evt active">
+      <div class="evt-title">xdp_do_flush() — 기존 flush</div>
+      <div class="evt-desc">devmap, cpumap, xskmap 벌크 큐 flush</div>
+    </div>
+    <div class="evt pink active">
+      <div class="evt-title">★ dev_xdp_gen_run() — eTran 추가</div>
+      <div class="evt-desc">per-CPU 큐에서 ACK 메타데이터 pop → 사전 할당 프레임에 헤더 구성 → XDP_TX로 전송. 이 루프도 동일한 budget(64) 이내에서 실행.</div>
+      <div class="evt-code">bpf_map_pop_elem() → 헤더 채움 → return XDP_TX</div>
+    </div>
+    <div class="evt orange active">
+      <div class="evt-title">napi_complete_done()</div>
+      <div class="evt-desc">처리 완료, 인터럽트 재활성화 (또는 reschedule)</div>
+    </div>
+  </div>
+
+  <h3>8.2 왜 이 위치가 최적인가?</h3>
+
+  <div class="compare">
+    <div class="card">
+      <div class="tag" style="color: var(--accent4);">장점 1: 자연스러운 ACK 병합</div>
+      <h4>배치 처리 효과</h4>
+      <p>하나의 NAPI poll에서 64개의 데이터 패킷을 수신하면, 각각에 대한 ACK 메타데이터가 큐에 쌓입니다. XDP_GEN은 poll 끝에서 이를 한꺼번에 처리하므로, <b>마지막 cumulative ACK 하나만 보내도</b> 64개를 모두 확인할 수 있습니다.</p>
+    </div>
+    <div class="card">
+      <div class="tag" style="color: var(--accent4);">장점 2: 컨텍스트 스위치 없음</div>
+      <h4>동일 softirq 컨텍스트</h4>
+      <p>XDP_GEN은 NAPI softirq 컨텍스트 내에서 실행되므로, 수신 처리와 ACK 전송 사이에 <b>커널-유저 전환이나 softirq 경계 전환이 없습니다</b>. 같은 CPU에서 연속적으로 처리됩니다.</p>
+    </div>
+  </div>
+
+  <div class="compare">
+    <div class="card">
+      <div class="tag" style="color: var(--accent4);">장점 3: per-CPU 격리</div>
+      <h4>락 없는 처리</h4>
+      <p>NAPI poll은 per-CPU이므로, XDP가 push한 메타데이터와 XDP_GEN이 pop하는 메타데이터가 <b>같은 CPU의 per-CPU 큐</b>에서 처리됩니다. 교차 코어 동기화가 전혀 필요 없습니다.</p>
+    </div>
+    <div class="card">
+      <div class="tag" style="color: var(--accent4);">장점 4: 페이지 풀 재활용</div>
+      <h4>할당 비용 제거</h4>
+      <p>XDP_GEN은 NAPI 컨텍스트의 <code>page_pool</code> 할당자를 사용하여 프레임을 사전 할당합니다. 사용하지 않은 프레임은 풀로 돌아가고, 다음 poll에서 재활용됩니다. 매번 새로 할당할 필요가 없습니다.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================ -->
+<!-- 9. 정리 -->
+<!-- ============================================ -->
+<div class="section">
+  <h2>9. 핵심 정리</h2>
+
+  <table class="tbl">
+    <thead><tr><th>개념</th><th>설명</th></tr></thead>
+    <tbody>
+      <tr><td><b>NAPI</b></td><td>인터럽트 + 폴링 혼합 방식의 패킷 수신 프레임워크. 고속 네트워크에서 인터럽트 오버헤드를 제거</td></tr>
+      <tr><td><b>NAPI poll</b></td><td>드라이버가 등록한 콜백 함수. Ring Buffer에서 패킷을 budget만큼 가져와 처리</td></tr>
+      <tr><td><b>Budget</b></td><td>poll 1회에 처리할 최대 패킷 수 (기본 64). CPU 독점 방지</td></tr>
+      <tr><td><b>Poll 주기</b></td><td>인터럽트 → softirq → poll 루프 → flush → complete의 전체 사이클</td></tr>
+      <tr><td><b>완료 조건</b></td><td>work &lt; budget면 완료 (인터럽트 재활성화). work == budget면 재스케줄</td></tr>
+      <tr><td><b>멀티 큐 + RSS</b></td><td>여러 RX 큐를 여러 코어에 분산. 각 큐는 독립적 NAPI 인스턴스</td></tr>
+      <tr><td><b>GRO</b></td><td>NAPI poll 내에서 같은 flow의 패킷을 병합하여 스택 비용 감소</td></tr>
+      <tr><td><b>XDP_GEN 삽입 지점</b></td><td><code>xdp_do_flush()</code> 내부, poll 루프 직후. ACK 병합과 per-CPU 격리를 자연스럽게 활용</td></tr>
+    </tbody>
+  </table>
+
+  <div class="key-point pink">
+    <strong>eTran과의 관계 한 줄 요약:</strong> NAPI poll 주기는 "패킷 수신 → 처리 → flush"의 자연스러운 배치 사이클을 제공하는데, eTran은 이 사이클의 <b>flush 단계에 XDP_GEN을 삽입</b>하여, 수신한 패킷에 대한 ACK/Credit 생성을 같은 CPU, 같은 softirq 컨텍스트에서, 컨텍스트 스위치 없이, 락 없이, 사전 할당된 프레임으로 배치 처리합니다.
+  </div>
+</div>
+
+</div>
+</body>
+</html>
